@@ -1,0 +1,6 @@
+Legacy Table Dropped
+====================
+Timestamp: 2026-02-24T12:56:35.461989
+Table: procurement_records
+Records before drop: 500
+Backup files: procurement_records_20260224_125626.csv

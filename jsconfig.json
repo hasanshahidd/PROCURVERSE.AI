@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["frontend/src/*"],
+      "@shared/*": ["shared/*"]
+    },
+    "jsx": "react-jsx",
+    "checkJs": false,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "target": "ES2022"
+  },
+  "include": [
+    "frontend/src/**/*",
+    "shared/**/*"
+  ],
+  "exclude": [
+    "client/**/*",
+    "node_modules",
+    "dist",
+    "archive_docs",
+    "backend/**/*"
+  ]
+}

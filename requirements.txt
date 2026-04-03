@@ -1,0 +1,33 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+psycopg2-binary==2.9.10
+openai==1.58.1
+python-multipart==0.0.20
+openpyxl==3.1.5
+python-dotenv==1.0.1
+slowapi==0.1.9
+
+# LangChain Framework for Agentic Architecture
+langchain==0.1.10
+langchain-openai==0.0.5
+langchain-community==0.0.25
+langgraph==0.0.26
+langsmith>=0.1.0,<0.2.0
+
+# Additional utilities for agents
+tenacity==8.2.3
+pydantic==2.6.1
+pybreaker==1.0.1
+
+# Redis caching layer (FIX #4)
+redis==5.0.1
+fakeredis==2.21.1
+
+# JWT authentication
+PyJWT==2.8.0
+
+# Sprint 8: Real document processing
+pdfplumber==0.11.0
+Pillow==10.4.0
+httpx==0.27.0
+python-docx==1.1.2

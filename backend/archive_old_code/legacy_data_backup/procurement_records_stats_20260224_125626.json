@@ -1,0 +1,91 @@
+{
+  "total_records": 500,
+  "by_department": [
+    {
+      "department": "Operations",
+      "count": 61
+    },
+    {
+      "department": "HR",
+      "count": 59
+    },
+    {
+      "department": "R&D",
+      "count": 57
+    },
+    {
+      "department": "IT",
+      "count": 53
+    },
+    {
+      "department": "Marketing",
+      "count": 52
+    },
+    {
+      "department": "Procurement",
+      "count": 47
+    },
+    {
+      "department": "Sales",
+      "count": 46
+    },
+    {
+      "department": "Finance",
+      "count": 45
+    },
+    {
+      "department": "Legal",
+      "count": 42
+    },
+    {
+      "department": "Engineering",
+      "count": 38
+    }
+  ],
+  "by_year": [
+    {
+      "year": 2024,
+      "count": 250
+    },
+    {
+      "year": 2025,
+      "count": 250
+    }
+  ],
+  "by_status": [
+    {
+      "status": "Cancelled",
+      "count": 83
+    },
+    {
+      "status": "On Hold",
+      "count": 76
+    },
+    {
+      "status": "Approved",
+      "count": 75
+    },
+    {
+      "status": "Completed",
+      "count": 72
+    },
+    {
+      "status": "In Progress",
+      "count": 71
+    },
+    {
+      "status": "Under Review",
+      "count": 62
+    },
+    {
+      "status": "Pending",
+      "count": 61
+    }
+  ],
+  "budget_stats": {
+    "min": 10320.77,
+    "max": 499486.3,
+    "avg": 262835.2623066406,
+    "total": 131417664.0
+  }
+}

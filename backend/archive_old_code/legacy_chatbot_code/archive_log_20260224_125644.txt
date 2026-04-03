@@ -1,0 +1,14 @@
+Legacy Chatbot Code Archived
+========================================
+Timestamp: 2026-02-24T12:56:44.740897
+Files archived: 2
+
+Archived files:
+  - backend/services/database.py: Direct SQL queries to procurement_records
+  - backend/services/excel_loader.py: Excel data loader
+  - backend/scripts/check_excel_structure.py: Excel validation
+  - backend/scripts/find_headers.py: Excel header finder
+  - backend/scripts/full_verification.py: Excel verification
+  - backend/scripts/populate_excel_with_ai.py: Excel AI populator
+  - backend/scripts/test_one_row.py: Excel row tester
+  - backend/scripts/verify_excel.py: Excel verifier

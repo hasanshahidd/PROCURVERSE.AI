@@ -1,0 +1,327 @@
+{
+  "total": 30,
+  "passed": 30,
+  "failed": 0,
+  "pass_rate": 100.0,
+  "latency_ms": {
+    "min": 17451,
+    "p50": 25709,
+    "p95": 29201,
+    "max": 29236,
+    "avg": 24093.57
+  },
+  "by_category": {
+    "single": {
+      "total": 10,
+      "passed": 10,
+      "failed": 0
+    },
+    "multi": {
+      "total": 20,
+      "passed": 20,
+      "failed": 0
+    }
+  },
+  "results": [
+    {
+      "name": "approval_route_only",
+      "category": "single",
+      "ok": true,
+      "elapsed_ms": 27436,
+      "events": 19,
+      "final_status": "success",
+      "top_agent": "ApprovalRoutingAgent",
+      "error": null
+    },
+    {
+      "name": "multi_budget_approval",
+      "category": "multi",
+      "ok": true,
+      "elapsed_ms": 27446,
+      "events": 24,
+      "final_status": "success",
+      "top_agent": "MultiIntentOrchestrator",
+      "error": null
+    },
+    {
+      "name": "multi_budget_approval",
+      "category": "multi",
+      "ok": true,
+      "elapsed_ms": 27442,
+      "events": 24,
+      "final_status": "success",
+      "top_agent": "MultiIntentOrchestrator",
+      "error": null
+    },
+    {
+      "name": "multi_budget_approval",
+      "category": "multi",
+      "ok": true,
+      "elapsed_ms": 27445,
+      "events": 24,
+      "final_status": "success",
+      "top_agent": "MultiIntentOrchestrator",
+      "error": null
+    },
+    {
+      "name": "multi_risk_vendor_approval",
+      "category": "multi",
+      "ok": true,
+      "elapsed_ms": 27455,
+      "events": 34,
+      "final_status": "success",
+      "top_agent": "MultiIntentOrchestrator",
+      "error": null
+    },
+    {
+      "name": "multi_risk_vendor_approval",
+      "category": "multi",
+      "ok": true,
+      "elapsed_ms": 27457,
+      "events": 34,
+      "final_status": "success",
+      "top_agent": "MultiIntentOrchestrator",
+      "error": null
+    },
+    {
+      "name": "vendor_office_supplies",
+      "category": "single",
+      "ok": true,
+      "elapsed_ms": 25699,
+      "events": 17,
+      "final_status": "success",
+      "top_agent": "VendorSelectionAgent",
+      "error": null
+    },
+    {
+      "name": "multi_risk_vendor_approval",
+      "category": "multi",
+      "ok": true,
+      "elapsed_ms": 25708,
+      "events": 34,
+      "final_status": "success",
+      "top_agent": "MultiIntentOrchestrator",
+      "error": null
+    },
+    {
+      "name": "multi_risk_vendor_approval",
+      "category": "multi",
+      "ok": true,
+      "elapsed_ms": 25714,
+      "events": 34,
+      "final_status": "success",
+      "top_agent": "MultiIntentOrchestrator",
+      "error": null
+    },
+    {
+      "name": "multi_risk_vendor_approval",
+      "category": "multi",
+      "ok": true,
+      "elapsed_ms": 25709,
+      "events": 34,
+      "final_status": "success",
+      "top_agent": "MultiIntentOrchestrator",
+      "error": null
+    },
+    {
+      "name": "multi_risk_vendor_approval",
+      "category": "multi",
+      "ok": true,
+      "elapsed_ms": 25709,
+      "events": 34,
+      "final_status": "success",
+      "top_agent": "MultiIntentOrchestrator",
+      "error": null
+    },
+    {
+      "name": "multi_all_four",
+      "category": "multi",
+      "ok": true,
+      "elapsed_ms": 25732,
+      "events": 52,
+      "final_status": "success",
+      "top_agent": "MultiIntentOrchestrator",
+      "error": null
+    },
+    {
+      "name": "vendor_office_supplies",
+      "category": "single",
+      "ok": true,
+      "elapsed_ms": 29176,
+      "events": 17,
+      "final_status": "success",
+      "top_agent": "VendorSelectionAgent",
+      "error": null
+    },
+    {
+      "name": "vendor_office_supplies",
+      "category": "single",
+      "ok": true,
+      "elapsed_ms": 29167,
+      "events": 17,
+      "final_status": "success",
+      "top_agent": "VendorSelectionAgent",
+      "error": null
+    },
+    {
+      "name": "multi_budget_approval",
+      "category": "multi",
+      "ok": true,
+      "elapsed_ms": 29186,
+      "events": 24,
+      "final_status": "success",
+      "top_agent": "MultiIntentOrchestrator",
+      "error": null
+    },
+    {
+      "name": "multi_risk_vendor_approval",
+      "category": "multi",
+      "ok": true,
+      "elapsed_ms": 29201,
+      "events": 34,
+      "final_status": "success",
+      "top_agent": "MultiIntentOrchestrator",
+      "error": null
+    },
+    {
+      "name": "multi_all_four",
+      "category": "multi",
+      "ok": true,
+      "elapsed_ms": 29216,
+      "events": 52,
+      "final_status": "success",
+      "top_agent": "MultiIntentOrchestrator",
+      "error": null
+    },
+    {
+      "name": "multi_all_four",
+      "category": "multi",
+      "ok": true,
+      "elapsed_ms": 29236,
+      "events": 52,
+      "final_status": "success",
+      "top_agent": "MultiIntentOrchestrator",
+      "error": null
+    },
+    {
+      "name": "vendor_office_supplies",
+      "category": "single",
+      "ok": true,
+      "elapsed_ms": 20637,
+      "events": 17,
+      "final_status": "success",
+      "top_agent": "VendorSelectionAgent",
+      "error": null
+    },
+    {
+      "name": "vendor_office_supplies",
+      "category": "single",
+      "ok": true,
+      "elapsed_ms": 20651,
+      "events": 17,
+      "final_status": "success",
+      "top_agent": "VendorSelectionAgent",
+      "error": null
+    },
+    {
+      "name": "budget_it_small",
+      "category": "single",
+      "ok": true,
+      "elapsed_ms": 20626,
+      "events": 21,
+      "final_status": "success",
+      "top_agent": "BudgetVerificationAgent",
+      "error": null
+    },
+    {
+      "name": "multi_budget_approval",
+      "category": "multi",
+      "ok": true,
+      "elapsed_ms": 20661,
+      "events": 24,
+      "final_status": "success",
+      "top_agent": "MultiIntentOrchestrator",
+      "error": null
+    },
+    {
+      "name": "multi_risk_vendor_approval",
+      "category": "multi",
+      "ok": true,
+      "elapsed_ms": 20648,
+      "events": 34,
+      "final_status": "success",
+      "top_agent": "MultiIntentOrchestrator",
+      "error": null
+    },
+    {
+      "name": "multi_all_four",
+      "category": "multi",
+      "ok": true,
+      "elapsed_ms": 20645,
+      "events": 52,
+      "final_status": "success",
+      "top_agent": "MultiIntentOrchestrator",
+      "error": null
+    },
+    {
+      "name": "risk_vendor_medium",
+      "category": "single",
+      "ok": true,
+      "elapsed_ms": 17451,
+      "events": 17,
+      "final_status": "success",
+      "top_agent": "RiskAssessmentAgent",
+      "error": null
+    },
+    {
+      "name": "budget_it_small",
+      "category": "single",
+      "ok": true,
+      "elapsed_ms": 17471,
+      "events": 21,
+      "final_status": "success",
+      "top_agent": "BudgetVerificationAgent",
+      "error": null
+    },
+    {
+      "name": "budget_it_small",
+      "category": "single",
+      "ok": true,
+      "elapsed_ms": 17481,
+      "events": 21,
+      "final_status": "success",
+      "top_agent": "BudgetVerificationAgent",
+      "error": null
+    },
+    {
+      "name": "multi_budget_approval",
+      "category": "multi",
+      "ok": true,
+      "elapsed_ms": 17472,
+      "events": 24,
+      "final_status": "success",
+      "top_agent": "MultiIntentOrchestrator",
+      "error": null
+    },
+    {
+      "name": "multi_budget_approval",
+      "category": "multi",
+      "ok": true,
+      "elapsed_ms": 17453,
+      "events": 24,
+      "final_status": "success",
+      "top_agent": "MultiIntentOrchestrator",
+      "error": null
+    },
+    {
+      "name": "multi_risk_vendor_approval",
+      "category": "multi",
+      "ok": true,
+      "elapsed_ms": 17477,
+      "events": 34,
+      "final_status": "success",
+      "top_agent": "MultiIntentOrchestrator",
+      "error": null
+    }
+  ]
+}

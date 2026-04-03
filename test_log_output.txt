@@ -1,0 +1,39 @@
+﻿python : Traceback (most recent call last):
+At line:1 char:1
++ python backend/tests/test_risk_agent.py 2>&1 | 
+Out-File -FilePath "te ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Tracebac 
+   k (most recent call last)::String) [], RemoteExce  
+  ption
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  File "C:\Users\HP\OneDrive\Desktop\bot\backend\tests
+\test_risk_agent.py", line 228, in <module>
+    asyncio.run(main())
+  File "C:\Users\HP\AppData\Local\Programs\Python\Pyth
+on311\Lib\asyncio\runners.py", line 190, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\HP\AppData\Local\Programs\Python\Pyth
+on311\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\HP\AppData\Local\Programs\Python\Pyth
+on311\Lib\asyncio\base_events.py", line 654, in 
+run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\HP\OneDrive\Desktop\bot\backend\tests
+\test_risk_agent.py", line 201, in main
+    print("\n\U0001f680 RISK ASSESSMENT AGENT - 
+COMPREHENSIVE TEST SUITE")
+  File "C:\Users\HP\AppData\Local\Programs\Python\Pyth
+on311\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,enc
+oding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode 
+character '\U0001f680' in position 2: character maps 
+to <undefined>
