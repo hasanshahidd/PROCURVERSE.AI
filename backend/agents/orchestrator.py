@@ -3423,13 +3423,20 @@ Return JSON (valid format):
                 return None
 
         def _session_resolve_gate(action_name: str) -> None:
-            """Resolve the prior gate that paused this session. R13 idempotent."""
+            """Resolve the prior gate that paused this session. R13 idempotent.
+
+            During hybrid mode the /resume route handler already resolves the
+            gate and emits gate_resolved before spawning this background task.
+            We still call resolve_gate here (idempotent via gate_resolution_id)
+            but only emit gate_resolved if it was a FRESH resolution — prevents
+            duplicate gate_resolved events in the session_events log.
+            """
             if not (session_id_hybrid and gate_id_hybrid):
                 return
             try:
                 import uuid as _uuid
                 from backend.services.session_service import SessionService
-                SessionService.resolve_gate(
+                result = SessionService.resolve_gate(
                     gate_id=gate_id_hybrid,
                     decision={
                         "action": action_name or "",
@@ -3438,10 +3445,18 @@ Return JSON (valid format):
                     resolved_by=resume_user_id,
                     gate_resolution_id=gate_resolution_id or str(_uuid.uuid4()),
                 )
-                _session_emit("gate_resolved", {
-                    "gate_id": gate_id_hybrid,
-                    "action": action_name or "",
-                })
+                # Only emit if this was a fresh resolution (not already handled
+                # by the /resume route handler). Prevents duplicate events.
+                if not result.get("idempotent_replay"):
+                    _session_emit("gate_resolved", {
+                        "gate_id": gate_id_hybrid,
+                        "action": action_name or "",
+                    })
+                else:
+                    logger.debug(
+                        "[P2P-RESUME] gate %s already resolved (idempotent replay) — skipping emit",
+                        (gate_id_hybrid or "?")[:8],
+                    )
             except Exception as _exc:
                 logger.warning("[P2P-RESUME] session resolve_gate failed (non-fatal in hybrid): %s", _exc)
 
