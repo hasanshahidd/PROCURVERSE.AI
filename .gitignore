@@ -12,8 +12,8 @@ ENV/
 dist/
 build/
 
-# Environment variables
-# .env included intentionally for Replit deployment
+# Environment variables (never commit secrets)
+.env
 .env.local
 .env.development
 .env.development.local
