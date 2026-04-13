@@ -595,7 +595,7 @@ class SessionService:
             allowed = ALLOWED_TRANSITIONS.get(current_phase, frozenset())
             if new_phase != current_phase and new_phase not in allowed:
                 raise IllegalTransitionError(
-                    f"Illegal transition {current_phase!r} → {new_phase!r}. "
+                    f"Illegal transition {current_phase!r} -> {new_phase!r}. "
                     f"Allowed from {current_phase!r}: {sorted(allowed)}"
                 )
 

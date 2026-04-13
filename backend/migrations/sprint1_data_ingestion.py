@@ -959,7 +959,7 @@ def run_ingestion(file_filter: str = None, group_filter: str = None):
     if errors:
         print(f"\n{len(errors)} error(s):")
         for file_num, table, msg in errors:
-            print(f"   File {file_num} → {table}: {msg[:120]}")
+            print(f"   File {file_num} -> {table}: {msg[:120]}")
     else:
         print(f"\nAll {len(loaders_to_run)} files loaded successfully.")
 

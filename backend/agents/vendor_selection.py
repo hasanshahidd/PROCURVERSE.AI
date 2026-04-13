@@ -414,9 +414,9 @@ Alternative Vendors:
             total_score = quality_score + price_score + delivery_score + category_score
             
             logger.debug(
-                f"[VendorAgent]     → {vendor_name}: Q={quality_score:.1f} "
+                f"[VendorAgent]     -> {vendor_name}: Q={quality_score:.1f} "
                 f"P={price_score:.1f} D={delivery_score:.1f} C={category_score:.1f} "
-                f"→ TOTAL={total_score:.1f}/100"
+                f"-> TOTAL={total_score:.1f}/100"
             )
             
             # Generate recommendation reason

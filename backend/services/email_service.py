@@ -120,7 +120,7 @@ class MockEmailSender(IEmailSender):
         sender = from_email or os.environ.get("FROM_EMAIL", _DEFAULT_FROM_EMAIL)
         cc_str = f" | cc: {','.join(cc)}" if cc else ""
         logger.info(
-            "[MockEmailSender] SEND → %s | from: %s | subject: %s%s",
+            "[MockEmailSender] SEND -> %s | from: %s | subject: %s%s",
             to,
             sender,
             subject[:80],
@@ -267,7 +267,7 @@ class SendGridEmailSender(IEmailSender):
         payload = self._build_payload(to, subject, body_html, from_email, cc)
         success = self._post_sendgrid(payload)
         if success:
-            logger.info("[SendGridEmailSender] Sent → %s | subject: %s", to, subject[:80])
+            logger.info("[SendGridEmailSender] Sent -> %s | subject: %s", to, subject[:80])
         return success
 
     def bulk_send(self, messages: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -390,12 +390,12 @@ class SMTPEmailSender(IEmailSender):
                 smtp.sendmail(sender, recipients, msg.as_string())
 
             logger.info(
-                "[SMTPEmailSender] Sent → %s | subject: %s", to, subject[:80]
+                "[SMTPEmailSender] Sent -> %s | subject: %s", to, subject[:80]
             )
             return True
 
         except Exception as exc:
-            logger.error("[SMTPEmailSender] Send failed → %s: %s", to, exc)
+            logger.error("[SMTPEmailSender] Send failed -> %s: %s", to, exc)
             return False
 
     def bulk_send(self, messages: List[Dict[str, Any]]) -> Dict[str, Any]:

@@ -830,7 +830,7 @@ def _upgrade_create_to_p2p_full(
 
     if upgraded:
         logger.info(
-            "[INTENT UPGRADE] CREATE → P2P_FULL "
+            "[INTENT UPGRADE] CREATE -> P2P_FULL "
             "(procurement verb + quantity + product_name detected)"
         )
     return new_intents
@@ -1075,8 +1075,8 @@ async def execute_agentic_request(request: AgenticRequest, current_user: dict = 
                 all_query_types.append(intent_query_type)
                 
                 print(f"\n[EXECUTE - Intent {idx}/{len(intents)}]")
-                print(f"  → Data source: {intent_data_source}")
-                print(f"  → Query type: {intent_query_type}")
+                print(f"  -> Data source: {intent_data_source}")
+                print(f"  -> Query type: {intent_query_type}")
 
                 # Budget gate: skip approval if budget check failed earlier in this sequence
                 if budget_failed and intent_query_type_upper == "APPROVAL":

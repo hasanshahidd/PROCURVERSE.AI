@@ -39,7 +39,7 @@ def translate_to_english(text: str, source_language: str) -> str:
         return text
     
     logger.info(f"=" * 80)
-    logger.info(f"[INPUT TRANSLATION] {LANGUAGE_NAMES[source_language]} → English")
+    logger.info(f"[INPUT TRANSLATION] {LANGUAGE_NAMES[source_language]} -> English")
     logger.info(f"Original text: {text[:200]}")
     
     try:
@@ -77,7 +77,7 @@ def translate_from_english(text: str, target_language: str) -> str:
         return text
     
     logger.info(f"\n" + "=" * 80)
-    logger.info(f"[OUTPUT TRANSLATION] English → {LANGUAGE_NAMES[target_language]}")
+    logger.info(f"[OUTPUT TRANSLATION] English -> {LANGUAGE_NAMES[target_language]}")
     logger.info(f"Input text length: {len(text)} characters")
     logger.info(f"First 500 chars of English text:")
     logger.info(text[:500])

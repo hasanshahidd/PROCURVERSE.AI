@@ -127,7 +127,7 @@ async def switch_data_source(body: DataSourceSwitch):
         return {'success': True, 'message': f'Already using {new_source}', 'current': new_source}
 
     # Switch
-    log.info("Switching DATA_SOURCE: %s → %s", previous, new_source)
+    log.info("Switching DATA_SOURCE: %s -> %s", previous, new_source)
     os.environ['DATA_SOURCE'] = new_source
     reset_adapter()
 

@@ -151,7 +151,7 @@ class AgentEventStream:
                 event_json = json.dumps(event, default=self._json_default)
                 sse_message = f"data: {event_json}\n\n"
                 
-                logger.debug(f"[EVENT STREAM] → Sending: {event['type']}")
+                logger.debug(f"[EVENT STREAM] -> Sending: {event['type']}")
                 
                 yield sse_message
                 

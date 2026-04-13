@@ -258,7 +258,7 @@ class OrchestratorAgent(BaseAgent):
         qt_upper = (query_type or "").strip().upper()
         direct_agent = _DIRECT_ROUTE_MAP.get(qt_upper)
         if direct_agent and (direct_agent in self.specialized_agents or direct_agent in ("pr_creation", "po_creation", "p2p_full")):
-            logger.info(f"[ORCHESTRATOR] FAST-PATH: query_type={qt_upper} → {direct_agent} (skipping LLM)")
+            logger.info(f"[ORCHESTRATOR] FAST-PATH: query_type={qt_upper} -> {direct_agent} (skipping LLM)")
             return AgentDecision(
                 action=json.dumps({"primary": direct_agent, "secondary": [], "sequence": "sequential"}),
                 reasoning=f"Direct routing from classifier query_type={qt_upper}",
@@ -3463,7 +3463,7 @@ Return JSON (valid format):
         else:
             resume_phase = "auto"  # fallback: let workflow engine drive
 
-        logger.info("[P2P-RESUME] Action=%s → resume_phase=%s", action, resume_phase)
+        logger.info("[P2P-RESUME] Action=%s -> resume_phase=%s", action, resume_phase)
 
         # Refresh tasks after resume_from_human advanced the DAG
         tasks = status.get("tasks", [])

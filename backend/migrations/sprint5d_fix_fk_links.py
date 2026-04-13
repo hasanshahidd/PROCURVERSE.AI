@@ -32,7 +32,7 @@ def run():
     cur = conn.cursor()
 
     # ── 1. Odoo po_lines.order_id: VARCHAR name → INTEGER id ─────────────────
-    log.info("Fixing Odoo po_lines.order_id VARCHAR → INTEGER...")
+    log.info("Fixing Odoo po_lines.order_id VARCHAR -> INTEGER...")
     cur.execute("ALTER TABLE po_lines_odoo ADD COLUMN order_id_int INTEGER")
     cur.execute("""
         UPDATE po_lines_odoo l
@@ -53,7 +53,7 @@ def run():
     log.info(f"  po_lines_odoo broken after fix: {n}")
 
     # ── 2. Odoo invoice_lines.move_id: VARCHAR name → INTEGER id ─────────────
-    log.info("Fixing Odoo invoice_lines.move_id VARCHAR → INTEGER...")
+    log.info("Fixing Odoo invoice_lines.move_id VARCHAR -> INTEGER...")
     cur.execute("ALTER TABLE invoice_lines_odoo ADD COLUMN move_id_int INTEGER")
     cur.execute("""
         UPDATE invoice_lines_odoo l
@@ -73,7 +73,7 @@ def run():
     log.info(f"  invoice_lines_odoo broken after fix: {n}")
 
     # ── 3. Odoo grn_lines.picking_id: VARCHAR name → INTEGER id ──────────────
-    log.info("Fixing Odoo grn_lines.picking_id VARCHAR → INTEGER...")
+    log.info("Fixing Odoo grn_lines.picking_id VARCHAR -> INTEGER...")
     cur.execute("ALTER TABLE grn_lines_odoo ADD COLUMN picking_id_int INTEGER")
     cur.execute("""
         UPDATE grn_lines_odoo l

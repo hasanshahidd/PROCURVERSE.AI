@@ -43,7 +43,7 @@ def run():
                   AND (ar.approver_email IS NULL OR ar.approver_email = '')
             """)
             updated = cur.rowcount
-            logger.info("  → %d approval_rules rows updated with email", updated)
+            logger.info("  -> %d approval_rules rows updated with email", updated)
 
             # ── UAT-002b: Add PAYMENT approval rules ──────────────────────────
             # Check if already seeded
@@ -68,7 +68,7 @@ def run():
                       ('PAYMENT', 250000, 99999999, 3, 'CFO / Treasury',
                        'admin',    NULL, 48, 96, 'active')
                 """)
-                logger.info("  → 3 PAYMENT approval rules inserted")
+                logger.info("  -> 3 PAYMENT approval rules inserted")
 
                 # Fill emails for newly inserted PAYMENT rules
                 cur.execute("""
@@ -79,7 +79,7 @@ def run():
                       AND LOWER(ar.approver_role) = LOWER(u.role)
                       AND (ar.approver_email IS NULL OR ar.approver_email = '')
                 """)
-                logger.info("  → PAYMENT rules emails filled: %d rows", cur.rowcount)
+                logger.info("  -> PAYMENT rules emails filled: %d rows", cur.rowcount)
             else:
                 logger.info("UAT-002b: PAYMENT rules already exist (%d rows) — skipping.", existing)
 

@@ -429,7 +429,7 @@ def _call_approval_endpoint(action_id: str, pr_number: str, username: str) -> No
                 headers={"X-Internal-Call": "slack-interactive"},
             )
             logger.info(
-                "[Slack] Internal %s %s → %s", method, url, resp.status_code
+                "[Slack] Internal %s %s -> %s", method, url, resp.status_code
             )
     except Exception as exc:
         logger.warning("[Slack] Internal call failed (non-fatal): %s", exc)
@@ -447,6 +447,6 @@ def _update_slack_message(response_url: str, status_text: str, blocks: list) -> 
         }
         with httpx.Client(timeout=5.0) as client:
             resp = client.post(response_url, json=body)
-            logger.info("[Slack] Message update via response_url → %s", resp.status_code)
+            logger.info("[Slack] Message update via response_url -> %s", resp.status_code)
     except Exception as exc:
         logger.warning("[Slack] response_url update failed (non-fatal): %s", exc)

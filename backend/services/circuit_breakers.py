@@ -24,7 +24,7 @@ class CircuitBreakerListener(pybreaker.CircuitBreakerListener):
     
     def state_change(self, cb, old_state, new_state):
         """Log state transitions."""
-        logger.warning(f"[CIRCUIT BREAKER] {cb.name} state changed: {old_state.name} → {new_state.name}")
+        logger.warning(f"[CIRCUIT BREAKER] {cb.name} state changed: {old_state.name} -> {new_state.name}")
     
     def failure(self, cb, exc):
         """Log failures."""

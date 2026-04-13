@@ -368,7 +368,7 @@ class RiskAssessmentAgent(BaseAgent):
             resolved = await self._resolve_vendor_by_name(vendor_name)
             if resolved:
                 vendor_id = resolved.get("id")
-                logger.info(f"[RiskAgent] Resolved vendor '{vendor_name}' → ID {vendor_id}")
+                logger.info(f"[RiskAgent] Resolved vendor '{vendor_name}' -> ID {vendor_id}")
 
         if vendor_id:
             vendor_data = await self._get_vendor_data(vendor_id)

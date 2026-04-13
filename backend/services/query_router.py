@@ -369,9 +369,9 @@ def _fix_multi_intent_routing(question: str, intents: List[Dict[str, Any]]) -> L
                         filt["category"] = category
                     corrected.append({"data_source": "agentic", "query_type": qt, "filters": filt})
             
-            print(f"[MULTI-DEPT FIX] {len(dept_clauses)} depts × {len(detected_types)} actions → {len(corrected)} intents")
+            print(f"[MULTI-DEPT FIX] {len(dept_clauses)} depts × {len(detected_types)} actions -> {len(corrected)} intents")
             for c in corrected:
-                print(f"  → {c['query_type']} for {c['filters'].get('department')} ${c['filters'].get('amount')}")
+                print(f"  -> {c['query_type']} for {c['filters'].get('department')} ${c['filters'].get('amount')}")
             return corrected
 
     # --- Multi-department detection (no explicit amounts) ---
@@ -429,7 +429,7 @@ def _fix_multi_intent_routing(question: str, intents: List[Dict[str, Any]]) -> L
         for qt in detected_types
     ]
 
-    print(f"[MULTI-INTENT FIX] Remapped {len(intents)} LLM intents → {[i['query_type'] for i in corrected]}")
+    print(f"[MULTI-INTENT FIX] Remapped {len(intents)} LLM intents -> {[i['query_type'] for i in corrected]}")
     return corrected
 
 
@@ -614,7 +614,7 @@ def classify_query_intent(question: str) -> Dict[str, Any]:
     if pre is not None:
         print(
             f"[CLASSIFIER PRE] Deterministic rule '{pre['_rule']}' matched "
-            f"→ {pre['query_type']} (confidence {pre['confidence']})"
+            f"-> {pre['query_type']} (confidence {pre['confidence']})"
         )
         return pre
 
@@ -922,9 +922,9 @@ def route_and_execute_query(question: str, language: str = "en") -> Dict[str, An
             filters = intent.get("filters", {})
             
             print(f"\n[ROUTING DECISION - Intent {idx}/{len(intents)}]")
-            print(f"  → Routing to: {data_source}")
-            print(f"  → Query type: {query_type}")
-            print(f"  → Filters: {filters}")
+            print(f"  -> Routing to: {data_source}")
+            print(f"  -> Query type: {query_type}")
+            print(f"  -> Filters: {filters}")
 
             # Budget gate: if budget verification has failed, skip approval routing
             if budget_failed and query_type_upper == "APPROVAL":
@@ -984,9 +984,9 @@ def route_and_execute_query(question: str, language: str = "en") -> Dict[str, An
     filters = classification.get("filters", {})
     
     print(f"\n[ROUTING DECISION - Single Intent]")
-    print(f"  → Routing to: {data_source}")
-    print(f"  → Query type: {query_type}")
-    print(f"  → Filters: {filters}")
+    print(f"  -> Routing to: {data_source}")
+    print(f"  -> Query type: {query_type}")
+    print(f"  -> Filters: {filters}")
     
     # Execute using shared helper to avoid duplication
     return _execute_single_intent(question, data_source, query_type, filters, language)

@@ -93,12 +93,12 @@ async def chat(request: ChatRequest, current_user: dict = Depends(require_auth()
         user_language = request.language
         
         if translation_service.is_translation_needed(user_language):
-            logger.info(f"[CHAT] Translation required: {user_language} → en")
+            logger.info(f"[CHAT] Translation required: {user_language} -> en")
             request.message = translation_service.translate_to_english(
                 request.message, 
                 user_language
             )
-            logger.info(f"[CHAT] Translated: {original_message[:50]} → {request.message[:50]}")
+            logger.info(f"[CHAT] Translated: {original_message[:50]} -> {request.message[:50]}")
         else:
             logger.info(f"[CHAT] ⏭️  No translation needed (language: {user_language})")
         
@@ -198,7 +198,7 @@ async def chat_stream(request: ChatRequest, current_user: dict = Depends(require
             user_language = request.language
             
             if translation_service.is_translation_needed(user_language):
-                logger.info(f"[STREAM] Translating: {user_language} → en")
+                logger.info(f"[STREAM] Translating: {user_language} -> en")
                 request.message = translation_service.translate_to_english(
                     request.message, user_language
                 )
@@ -227,7 +227,7 @@ async def chat_stream(request: ChatRequest, current_user: dict = Depends(require
             
             if data_source == "general":
                 # Use conversational AI for greetings/general questions
-                print(f"[STREAM ENDPOINT] → Using conversational AI")
+                print(f"[STREAM ENDPOINT] -> Using conversational AI")
                 yield f"data: {json.dumps({'type': 'progress', 'step': 2, 'total': 4, 'status': 'active', 'message': 'Thinking...'})}\n\n"
                 await asyncio.sleep(0.2)
                 
@@ -239,7 +239,7 @@ async def chat_stream(request: ChatRequest, current_user: dict = Depends(require
                 await asyncio.sleep(0.05)
             else:
                 # Query Odoo or custom tables for data queries
-                print(f"[STREAM ENDPOINT] → Using hybrid query system (source: {data_source})")
+                print(f"[STREAM ENDPOINT] -> Using hybrid query system (source: {data_source})")
                 yield f"data: {json.dumps({'type': 'progress', 'step': 2, 'total': 4, 'status': 'active', 'message': 'Searching data sources'})}\n\n"
                 await asyncio.sleep(0.2)
                 
