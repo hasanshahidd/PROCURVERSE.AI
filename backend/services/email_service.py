@@ -489,6 +489,7 @@ SMTP_USER = os.getenv("SMTP_USER", "")
 SMTP_PASSWORD_VAL = os.getenv("SMTP_PASSWORD", "")
 SMTP_FROM = os.getenv("SMTP_FROM", "procurement@procure-ai.com")
 SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY", "")
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
 EMAIL_ENABLED = os.getenv("EMAIL_ENABLED", "false").lower() == "true"
 
 
@@ -608,6 +609,42 @@ def send_email(
         except Exception as exc:
             logger.error("[EmailService] SendGrid exception: %s", exc)
             return {"success": False, "mode": "sendgrid", "message_id": None, "error": str(exc)}
+
+    if RESEND_API_KEY:
+        # Resend path — simple HTTP API, no packages needed
+        try:
+            import httpx
+            payload = {
+                "from": SMTP_FROM,
+                "to": recipients,
+                "subject": subject,
+                "html": html_body,
+            }
+            if text_body:
+                payload["text"] = text_body
+
+            resp = httpx.post(
+                "https://api.resend.com/emails",
+                headers={
+                    "Authorization": f"Bearer {RESEND_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+                timeout=15,
+            )
+            if resp.status_code in (200, 201):
+                resp_data = resp.json()
+                resend_id = resp_data.get("id", message_id)
+                logger.info("[EmailService] Resend OK — id=%s to=%s", resend_id, recipients)
+                return {"success": True, "mode": "resend", "message_id": resend_id, "error": None}
+            logger.error("[EmailService] Resend error %s: %s", resp.status_code, resp.text)
+            return {
+                "success": False, "mode": "resend", "message_id": None,
+                "error": f"Resend HTTP {resp.status_code}: {resp.text}",
+            }
+        except Exception as exc:
+            logger.error("[EmailService] Resend exception: %s", exc)
+            return {"success": False, "mode": "resend", "message_id": None, "error": str(exc)}
 
     # SMTP path
     try:
@@ -871,6 +908,98 @@ def send_payment_notification_email(
     return send_email(
         to=finance_email,
         subject=f"[Procure AI] Payment Due \u2014 {vendor} | {currency} {float(amount):,.2f}",
+        html_body=html,
+        text_body=text,
+    )
+
+
+def send_po_notification_email(
+    vendor_email: str,
+    vendor_name: str,
+    po_data: dict,
+) -> dict:
+    """Send Purchase Order notification to the vendor."""
+    po_number = po_data.get("po_number", "N/A")
+    pr_number = po_data.get("pr_number", "N/A")
+    product_name = po_data.get("product_name", "N/A")
+    quantity = po_data.get("quantity", 1)
+    total = po_data.get("budget", po_data.get("total", 0))
+    currency = po_data.get("currency", "USD")
+    department = po_data.get("department", "N/A")
+    requester = po_data.get("requester_name", po_data.get("requester", "N/A"))
+    delivery_address = po_data.get("delivery_address", "As per contract terms")
+
+    try:
+        total_fmt = f"{float(total):,.2f}"
+    except (ValueError, TypeError):
+        total_fmt = str(total)
+
+    body_html = f"""
+<p style="margin:0 0 20px;color:#374151;font-size:15px;">
+  Dear <strong>{vendor_name}</strong>,
+</p>
+<p style="margin:0 0 20px;color:#374151;font-size:15px;">
+  A new Purchase Order has been issued to your company. Please review the
+  details below and confirm receipt.
+</p>
+
+<table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;margin-bottom:28px;">
+  <tr style="background:#f0fdf4;">
+    <td colspan="2" style="padding:12px 16px;border-bottom:1px solid #e2e8f0;">
+      <strong style="color:#166534;font-size:14px;">Purchase Order {po_number}</strong>
+    </td>
+  </tr>
+  <tr>
+    <td style="padding:10px 16px;color:#6b7280;font-size:13px;width:40%;border-bottom:1px solid #f1f5f9;">PO Number</td>
+    <td style="padding:10px 16px;color:#111827;font-size:13px;font-weight:700;border-bottom:1px solid #f1f5f9;">{po_number}</td>
+  </tr>
+  <tr style="background:#fafafa;">
+    <td style="padding:10px 16px;color:#6b7280;font-size:13px;border-bottom:1px solid #f1f5f9;">PR Reference</td>
+    <td style="padding:10px 16px;color:#111827;font-size:13px;border-bottom:1px solid #f1f5f9;">{pr_number}</td>
+  </tr>
+  <tr>
+    <td style="padding:10px 16px;color:#6b7280;font-size:13px;border-bottom:1px solid #f1f5f9;">Item</td>
+    <td style="padding:10px 16px;color:#111827;font-size:13px;border-bottom:1px solid #f1f5f9;">{product_name}</td>
+  </tr>
+  <tr style="background:#fafafa;">
+    <td style="padding:10px 16px;color:#6b7280;font-size:13px;border-bottom:1px solid #f1f5f9;">Quantity</td>
+    <td style="padding:10px 16px;color:#111827;font-size:13px;border-bottom:1px solid #f1f5f9;">{quantity}</td>
+  </tr>
+  <tr>
+    <td style="padding:10px 16px;color:#6b7280;font-size:13px;border-bottom:1px solid #f1f5f9;">Total Value</td>
+    <td style="padding:10px 16px;color:#111827;font-size:16px;font-weight:700;border-bottom:1px solid #f1f5f9;">{currency} {total_fmt}</td>
+  </tr>
+  <tr style="background:#fafafa;">
+    <td style="padding:10px 16px;color:#6b7280;font-size:13px;border-bottom:1px solid #f1f5f9;">Requesting Dept</td>
+    <td style="padding:10px 16px;color:#111827;font-size:13px;border-bottom:1px solid #f1f5f9;">{department}</td>
+  </tr>
+  <tr>
+    <td style="padding:10px 16px;color:#6b7280;font-size:13px;">Delivery Address</td>
+    <td style="padding:10px 16px;color:#111827;font-size:13px;">{delivery_address}</td>
+  </tr>
+</table>
+
+<p style="margin:0 0 8px;color:#374151;font-size:14px;">
+  Please confirm this order and provide an estimated delivery date at your
+  earliest convenience.
+</p>
+<p style="margin:0;color:#6b7280;font-size:12px;">
+  This is an automated notification from Procure AI.
+</p>
+"""
+
+    html = _build_html(f"Purchase Order {po_number}", body_html)
+    text = (
+        f"Purchase Order {po_number}\n\n"
+        f"Dear {vendor_name},\n\n"
+        f"A new PO has been issued:\n"
+        f"  Item: {product_name}\n  Qty: {quantity}\n"
+        f"  Total: {currency} {total_fmt}\n  Dept: {department}\n\n"
+        f"Please confirm and provide estimated delivery date."
+    )
+    return send_email(
+        to=vendor_email,
+        subject=f"[Procure AI] Purchase Order {po_number} — {currency} {total_fmt}",
         html_body=html,
         text_body=text,
     )

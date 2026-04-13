@@ -181,9 +181,9 @@ def _execute_agentic_request_sync(orchestrator, agent_request: Dict[str, Any]) -
     If already inside an active event loop (e.g., async SSE route),
     run the coroutine in a dedicated worker thread with its own loop.
     """
-    print(f"[AGENTIC SYNC WRAPPER] 🔄 Preparing to execute orchestrator...")
-    print(f"[AGENTIC SYNC WRAPPER] 📋 Request: {agent_request.get('request', 'N/A')}")
-    print(f"[AGENTIC SYNC WRAPPER] 📦 PR Data: {agent_request.get('pr_data', {})}")
+    logger.info(f"[AGENTIC SYNC WRAPPER] Preparing to execute orchestrator...")
+    logger.info(f"[AGENTIC SYNC WRAPPER] Request: {agent_request.get('request', 'N/A')}")
+    logger.info(f"[AGENTIC SYNC WRAPPER] PR Data: {agent_request.get('pr_data', {})}")
     
     try:
         asyncio.get_running_loop()
@@ -192,18 +192,18 @@ def _execute_agentic_request_sync(orchestrator, agent_request: Dict[str, Any]) -
         has_running_loop = False
 
     if not has_running_loop:
-        print(f"[AGENTIC SYNC WRAPPER] ✅ No active loop, using asyncio.run()")
+        logger.info(f"[AGENTIC SYNC WRAPPER] No active loop, using asyncio.run()")
         result = asyncio.run(orchestrator.execute(agent_request))
-        print(f"[AGENTIC SYNC WRAPPER] ✅ Orchestrator execution completed")
-        print(f"[AGENTIC SYNC WRAPPER] 📊 Result status: {result.get('status')}")
+        logger.info(f"[AGENTIC SYNC WRAPPER] Orchestrator execution completed")
+        logger.info(f"[AGENTIC SYNC WRAPPER] Result status: {result.get('status')}")
         return result
 
-    print("[AGENTIC SYNC WRAPPER] ⚠️ Active event loop detected; executing in worker thread")
+    logger.info("[AGENTIC SYNC WRAPPER] ️ Active event loop detected; executing in worker thread")
     with ThreadPoolExecutor(max_workers=1) as executor:
         future = executor.submit(lambda: asyncio.run(orchestrator.execute(agent_request)))
         result = future.result()
-        print(f"[AGENTIC SYNC WRAPPER] ✅ Worker thread execution completed")
-        print(f"[AGENTIC SYNC WRAPPER] 📊 Result status: {result.get('status')}")
+        logger.info(f"[AGENTIC SYNC WRAPPER] Worker thread execution completed")
+        logger.info(f"[AGENTIC SYNC WRAPPER] Result status: {result.get('status')}")
         return result
 
 
@@ -216,6 +216,7 @@ _ANALYSIS_KEYWORD_MAP = [
     (_re.compile(r"\b(route\s+(for\s+)?approv|approval\s+rout|who\s+should\s+approv|get\s+approv)", _re.I), "APPROVAL"),
     (_re.compile(r"\b(best\s+vendor|recommend\s+(?:vendor|supplier)s?|choose\s+vendor|select\s+vendor|find\s+\w*\s*vendor|vendor\s+select|compare\s+vendor)", _re.I), "VENDOR"),
     (_re.compile(r"\b(compliance|policy\s+check|regulat)", _re.I), "COMPLIANCE"),
+    (_re.compile(r"\b(procure\s+to\s+pay|end[\s-]+to[\s-]+end|full\s+p2p|full\s+procur|procure\s+\d+\s+\w+\s+for)", _re.I), "P2P_FULL"),
 ]
 
 # Known departments for multi-department detection
@@ -432,10 +433,159 @@ def _fix_multi_intent_routing(question: str, intents: List[Dict[str, Any]]) -> L
     return corrected
 
 
+# Sprint E (2026-04-11): local deterministic pre-classifier.
+# Hard-guarantees a correct intent for the most common shapes so the LLM
+# classifier is an "enhancement" layer rather than a single point of failure.
+# If any of these match, we SHORT-CIRCUIT before calling the LLM. If the LLM
+# call later fails or returns garbage, we also fall back to this layer so the
+# classifier never drops to a blank "GENERAL".
+
+_CONVERSATIONAL_GREETING_RE = _re.compile(
+    r"^\s*(hi|hello|hey|howdy|good\s+(?:morning|afternoon|evening|night)|"
+    r"what(?:'s| is)\s+up|yo|sup|greetings|thanks|thank\s+you|thx|ty)\b",
+    _re.I,
+)
+_CONVERSATIONAL_QA_RE = _re.compile(
+    r"^\s*(what\s+can\s+you|what\s+do\s+you|who\s+are\s+you|help|"
+    r"how\s+(?:do\s+i|does\s+this)|explain|tell\s+me\s+about|can\s+you)\b",
+    _re.I,
+)
+_PROCUREMENT_VERB_FULL_RE = _re.compile(
+    r"\b(procure|procurement|buy|buying|purchase|purchasing|order|ordering|"
+    r"acquire|acquiring|source)\b",
+    _re.I,
+)
+_QUANTITY_NOUN_RE = _re.compile(
+    r"(\d+)\s+(laptop\s+accessories|laptops?|accessories|servers?|monitors?|"
+    r"printers?|desktops?|workstations?|devices?|machines?|units?|items?|"
+    r"pcs?|pieces?|chairs?|desks?|tables?|cameras?|supplies?)",
+    _re.I,
+)
+
+
+def _pre_classify_deterministic(question: str) -> Optional[Dict[str, Any]]:
+    """Hard-coded local rules that ALWAYS win over the LLM when they match.
+
+    Returns a normalized classification dict or None.
+
+    Ordering matters — more specific rules go first. The LLM classifier only
+    runs if this function returns None.
+    """
+    if not question or not question.strip():
+        return None
+
+    q = question.strip()
+    lowered = q.lower()
+
+    # ── Rule 1: purely conversational / greetings / "what can you do"  ──
+    if _CONVERSATIONAL_GREETING_RE.match(q) or _CONVERSATIONAL_QA_RE.match(q):
+        return {
+            "intents": [
+                {"data_source": "general", "query_type": "GENERAL", "filters": {}}
+            ],
+            "data_source": "general",
+            "query_type": "GENERAL",
+            "filters": {},
+            "confidence": 0.99,
+            "_pre_classified": True,
+            "_rule": "conversational",
+        }
+
+    # ── Rule 2: explicit "procure N <thing>" → P2P_FULL ─────────────────
+    # Very high confidence: a procurement verb PLUS a quantity+noun is almost
+    # always an execution request.
+    has_proc_verb = bool(_PROCUREMENT_VERB_FULL_RE.search(q))
+    qty_match = _QUANTITY_NOUN_RE.search(q)
+    if has_proc_verb and qty_match:
+        return {
+            "intents": [
+                {
+                    "data_source": "agentic",
+                    "query_type": "P2P_FULL",
+                    "filters": {},
+                }
+            ],
+            "data_source": "agentic",
+            "query_type": "P2P_FULL",
+            "filters": {},
+            "confidence": 0.98,
+            "_pre_classified": True,
+            "_rule": "procurement_verb+quantity_noun",
+        }
+
+    # ── Rule 3: "show purchase orders / vendors / products" → Odoo read ─
+    for pattern, q_type in (
+        (r"\b(show|list|get|display|fetch)\s+(?:all\s+)?(?:open\s+|current\s+|recent\s+)?purchase\s+orders?\b", "purchase_orders"),
+        (r"\b(show|list|get|display|fetch)\s+(?:all\s+)?(?:active\s+|current\s+)?vendors?\b", "vendors"),
+        (r"\b(show|list|get|display|fetch)\s+(?:all\s+)?(?:active\s+)?suppliers?\b", "vendors"),
+        (r"\b(show|list|get|display|fetch)\s+(?:all\s+)?products?\b", "products"),
+        (r"\b(show|list|get|display|fetch)\s+(?:all\s+)?items?\b", "products"),
+    ):
+        if _re.search(pattern, lowered):
+            return {
+                "intents": [
+                    {"data_source": "odoo", "query_type": q_type, "filters": {}}
+                ],
+                "data_source": "odoo",
+                "query_type": q_type,
+                "filters": {},
+                "confidence": 0.97,
+                "_pre_classified": True,
+                "_rule": f"odoo_show_{q_type}",
+            }
+
+    return None
+
+
+def _fallback_classify(question: str) -> Dict[str, Any]:
+    """Last-resort classifier used when the LLM call raises or returns junk.
+
+    Tries deterministic rules first; if none fit, returns a GENERAL intent with
+    lower confidence (but never blank). Callers should always get a valid
+    classification shape back.
+    """
+    pre = _pre_classify_deterministic(question)
+    if pre is not None:
+        return pre
+
+    # Minimal keyword net — biased toward NOT breaking user workflows.
+    lower = (question or "").lower()
+    if any(k in lower for k in ("budget", "afford", "within budget")):
+        return {
+            "intents": [{"data_source": "agentic", "query_type": "BUDGET", "filters": {}}],
+            "data_source": "agentic",
+            "query_type": "BUDGET",
+            "filters": {},
+            "confidence": 0.55,
+            "_pre_classified": False,
+            "_rule": "fallback_budget_keyword",
+        }
+    if any(k in lower for k in ("vendor", "supplier")):
+        return {
+            "intents": [{"data_source": "agentic", "query_type": "VENDOR", "filters": {}}],
+            "data_source": "agentic",
+            "query_type": "VENDOR",
+            "filters": {},
+            "confidence": 0.55,
+            "_pre_classified": False,
+            "_rule": "fallback_vendor_keyword",
+        }
+
+    return {
+        "intents": [{"data_source": "general", "query_type": "GENERAL", "filters": {}}],
+        "data_source": "general",
+        "query_type": "GENERAL",
+        "filters": {},
+        "confidence": 0.4,
+        "_pre_classified": False,
+        "_rule": "fallback_general",
+    }
+
+
 def classify_query_intent(question: str) -> Dict[str, Any]:
     """
     Classify user's question to determine data source(s)
-    
+
     Returns:
         {
             "intents": [
@@ -447,25 +597,42 @@ def classify_query_intent(question: str) -> Dict[str, Any]:
             ],
             "confidence": float
         }
-        
+
         For backward compatibility, also includes flat fields for single-intent queries:
         "data_source", "query_type", "filters" copied from first intent
     """
-    
+
     print(f"\n{'='*60}")
     print(f"[QUERY CLASSIFIER] Analyzing question: '{question}'")
     print(f"{'='*60}")
-    
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": build_classifier_instructions()},
-            {"role": "user", "content": question}
-        ],
-        temperature=0.2,
-        response_format={"type": "json_object"}
-    )
-    
+
+    # Sprint E (2026-04-11): deterministic short-circuit. If the input matches
+    # a rock-solid pattern, skip the LLM entirely. Lower latency AND no risk of
+    # the LLM drifting on the most common shapes. The LLM classifier still runs
+    # for everything else and is further enriched below.
+    pre = _pre_classify_deterministic(question)
+    if pre is not None:
+        print(
+            f"[CLASSIFIER PRE] Deterministic rule '{pre['_rule']}' matched "
+            f"→ {pre['query_type']} (confidence {pre['confidence']})"
+        )
+        return pre
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": build_classifier_instructions()},
+                {"role": "user", "content": question}
+            ],
+            temperature=0.2,
+            response_format={"type": "json_object"}
+        )
+    except Exception as llm_exc:
+        # Sprint E: never crash on LLM failure — fall back deterministically.
+        print(f"[CLASSIFIER LLM] call failed, using fallback: {llm_exc}")
+        return _fallback_classify(question)
+
     try:
         result = json.loads(response.choices[0].message.content)
         
@@ -534,15 +701,15 @@ def classify_query_intent(question: str) -> Dict[str, Any]:
         print(f"{'='*60}\n")
         return result
     except Exception as e:
+        # Sprint E (2026-04-11): fall back deterministically so the downstream
+        # pipeline NEVER sees a blank GENERAL when a keyword rule could save
+        # it. Previously this dropped to {query_type:GENERAL,confidence:0.3}
+        # which then got routed to the chat handler as "I can't help with
+        # that" regardless of the actual request.
         print(f"[CLASSIFICATION ERROR] {str(e)}")
+        print(f"[CLASSIFIER] Falling back to deterministic rule engine")
         print(f"{'='*60}\n")
-        return {
-            "intents": [{"data_source": "general", "query_type": "GENERAL", "filters": {}}],
-            "data_source": "general",
-            "query_type": "GENERAL",
-            "filters": {},
-            "confidence": 0.3
-        }
+        return _fallback_classify(question)
 
 
 def _execute_single_intent(
@@ -619,8 +786,8 @@ def _execute_single_intent(
                 # Run async agent execution safely from sync router
                 agent_result = _execute_agentic_request_sync(orchestrator, agent_request)
                 
-                print(f"[AGENTIC] ✅ Agent execution completed")
-                print(f"[AGENTIC] 📊 Result status: {agent_result.get('status')}")
+                logger.info(f"[AGENTIC] Agent execution completed")
+                logger.info(f"[AGENTIC] Result status: {agent_result.get('status')}")
                 
                 # Format agent result for return (simplified extraction for multi-intent)
                 if agent_result and agent_result.get("status") == "success":
@@ -671,7 +838,7 @@ def _execute_single_intent(
                     }]
                     
             except Exception as agent_error:
-                print(f"[AGENTIC ERROR] ❌ Exception occurred: {str(agent_error)}")
+                logger.info(f"[AGENTIC ERROR] Exception occurred: {str(agent_error)}")
                 import traceback
                 print(f"[AGENTIC ERROR] Traceback: {traceback.format_exc()}")
                 data = [{
@@ -913,14 +1080,14 @@ def generate_explanation(question: str, data: List[Dict], source: str, language:
 **CRITICAL RULES FOR AGENTIC RESPONSES:**
 
 1. **Budget Verification Results** - Focus on business impact:
-   - Start with action taken: "✅ Reserved $XX,XXX from [Department] [Budget Category]"
+   - Start with action taken: "Reserved $XX,XXX from [Department] [Budget Category]"
    - Show budget change: "Available balance: $X,XXX,XXX (was $X,XXX,XXX before reservation)"
    - Include utilization: "Budget utilization: XX% (Safe/Warning/Critical)"
-   - Alert levels: Show if 80%+ (⚠️ Warning at 80%, 🔴 Critical at 90%, 🚨 Emergency at 95%)
+   - Alert levels: Show if 80%+ (️ Warning at 80%, Critical at 90%, Emergency at 95%)
    - Hide technical fields: agent, status, action, reasoning, confidence
 
 2. **Approval Routing Results** - Show actionable information:
-   - Start with routing action: "📋 Routed to [X] approver(s) for $XX,XXX purchase"
+   - Start with routing action: "Routed to [X] approver(s) for $XX,XXX purchase"
    - List approvers in hierarchy: "Level 1: [Name] ([Title]) → Level 2: [Name] ([Title])"
    - Include approval threshold: "Requires [Manager/Director/VP] approval (amount exceeds $XX,XXX threshold)"
    - If combined with budget: Show budget action first, then approval routing
@@ -929,10 +1096,10 @@ def generate_explanation(question: str, data: List[Dict], source: str, language:
 3. **Combined Actions** (Budget + Approval):
    - Budget action first (reservation/commitment)
    - Then approval routing
-   - Use sections: "💰 Budget Status" and "📋 Approval Chain"
+   - Use sections: "Budget Status" and "Approval Chain"
 
 4. **Formatting Rules:**
-   - Use emojis strategically (✅ ❌ ⚠️ 💰 📋 🔴 🚨)
+   - Use emojis strategically (️ )
    - NO tables with "Agent", "Status", "Action", "Confidence" - these are internal fields
    - Use bullet points or numbered lists for clarity
    - Amounts always with $ and commas: $1,234,567
@@ -945,19 +1112,19 @@ def generate_explanation(question: str, data: List[Dict], source: str, language:
    - No jargon: "Budget utilization" not "Current utilization rate"
 
 **Example Good Response:**
-"✅ Reserved $50,000 from IT CAPEX budget
+"Reserved $50,000 from IT CAPEX budget
 
-💰 Budget Status:
+Budget Status:
 - Available balance: $1,650,000 (was $1,700,000)
 - Budget utilization: 41% (Safe - no alerts)
 - Fiscal Year: 2026
 
-📋 Approval Chain:
+Approval Chain:
 Purchase requires 2 approvals (amount exceeds $10,000):
 1. Jane Smith (IT Manager) - jane.smith@company.com
 2. Emily Brown (IT Director) - emily.brown@company.com
 
-✓ Budget committed and ready for approval workflow"
+Budget committed and ready for approval workflow"
 
 **Example Bad Response:**
 "Agent: BudgetVerificationAgent

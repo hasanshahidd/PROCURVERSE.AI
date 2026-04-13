@@ -84,11 +84,11 @@ def run():
                 logger.info("UAT-002b: PAYMENT rules already exist (%d rows) — skipping.", existing)
 
         conn.commit()
-        logger.info("✅ Sprint 7 UAT fixes migration completed successfully.")
+        logger.info("Sprint 7 UAT fixes migration completed successfully.")
 
     except Exception as e:
         conn.rollback()
-        logger.error("❌ Migration failed: %s", e)
+        logger.error("Migration failed: %s", e)
         raise
     finally:
         conn.close()

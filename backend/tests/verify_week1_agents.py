@@ -32,35 +32,35 @@ def verify_agent_structure():
             agent_class = getattr(module, agent_name)
             
             # Check class exists
-            print(f"  ✓ Class definition found")
+            print(f"  Class definition found")
             
             # Check required methods
             required_methods = ['execute', 'observe', 'decide', '_execute_action', 'learn']
             for method in required_methods:
                 if hasattr(agent_class, method):
-                    print(f"  ✓ Method '{method}' exists")
+                    print(f"  Method '{method}' exists")
                 else:
-                    print(f"  ✗ Method '{method}' MISSING")
+                    print(f"  Method '{method}' MISSING")
                     all_passed = False
             
             # Check docstring
             if agent_class.__doc__:
-                print(f"  ✓ Documentation present")
+                print(f"  Documentation present")
                 doc_lines = agent_class.__doc__.strip().split('\n')
                 print(f"     {doc_lines[0]}")
             else:
-                print(f"  ⚠ No documentation")
+                print(f"  No documentation")
             
-            print(f"  ✅ {agent_name} structure verified\n")
+            print(f"  {agent_name} structure verified\n")
             
         except ImportError as e:
-            print(f"  ✗ Failed to import: {e}")
+            print(f"  Failed to import: {e}")
             all_passed = False
         except AttributeError as e:
-            print(f"  ✗ Class not found: {e}")
+            print(f"  Class not found: {e}")
             all_passed = False
         except Exception as e:
-            print(f"  ✗ Unexpected error: {e}")
+            print(f"  Unexpected error: {e}")
             all_passed = False
     
     return all_passed
@@ -75,7 +75,7 @@ def verify_orchestrator_registration():
     try:
         # Check if imports work
         from backend.agents.orchestrator import OrchestratorAgent
-        print("✓ OrchestratorAgent imported successfully")
+        print("OrchestratorAgent imported successfully")
         
         # Check if agent files are imported in orchestrator
         with open('backend/agents/orchestrator.py', 'r', encoding='utf-8') as f:
@@ -92,16 +92,16 @@ def verify_orchestrator_registration():
             
             for check_name, check_string in checks:
                 if check_string in content:
-                    print(f"✓ {check_name} found in orchestrator")
+                    print(f"{check_name} found in orchestrator")
                 else:
-                    print(f"✗ {check_name} NOT FOUND in orchestrator")
+                    print(f"{check_name} NOT FOUND in orchestrator")
                     return False
         
-        print("\n✅ All agents properly registered in orchestrator\n")
+        print("\nAll agents properly registered in orchestrator\n")
         return True
         
     except Exception as e:
-        print(f"✗ Orchestrator check failed: {e}")
+        print(f"Orchestrator check failed: {e}")
         return False
 
 
@@ -123,16 +123,16 @@ def verify_api_routes():
             
             for route_path, route_desc in routes:
                 if route_path in content:
-                    print(f"✓ {route_desc} endpoint found")
+                    print(f"{route_desc} endpoint found")
                 else:
-                    print(f"✗ {route_desc} endpoint NOT FOUND")
+                    print(f"{route_desc} endpoint NOT FOUND")
                     return False
         
-        print("\n✅ All API routes created successfully\n")
+        print("\nAll API routes created successfully\n")
         return True
         
     except Exception as e:
-        print(f"✗ API routes check failed: {e}")
+        print(f"API routes check failed: {e}")
         return False
 
 
@@ -162,19 +162,19 @@ def count_operational_agents():
                                        "invoice_matching", "spend_analytics", "inventory_check"]
             }
             
-            print(f"\n📊 Progress by Phase:")
+            print(f"\nProgress by Phase:")
             for phase, agents in phase_breakdown.items():
                 registered = [a for a in agents if a in registrations]
                 print(f"  {phase}: {len(registered)}/{len(agents)} ({len(registered)/len(agents)*100:.0f}%)")
             
             total_planned = 17  # Including orchestrator
             progress_pct = (len(registrations) / total_planned) * 100
-            print(f"\n🎯 Overall Progress: {len(registrations)}/{total_planned} agents ({progress_pct:.1f}%)")
+            print(f"\nOverall Progress: {len(registrations)}/{total_planned} agents ({progress_pct:.1f}%)")
             
         return True
         
     except Exception as e:
-        print(f"✗ Agent count failed: {e}")
+        print(f"Agent count failed: {e}")
         return False
 
 
@@ -202,20 +202,20 @@ def main():
     print("="*80 + "\n")
     
     for test_name, passed in results:
-        status = "✅ PASSED" if passed else "❌ FAILED"
+        status = "PASSED" if passed else "FAILED"
         print(f"  {test_name}: {status}")
     
     all_passed = all(result[1] for result in results)
     
     if all_passed:
         print(f"\n{'='*80}")
-        print(" "*15 + "🎉 ALL VERIFICATIONS PASSED - WEEK 1 COMPLETE! 🎉")
+        print(" "*15 + "ALL VERIFICATIONS PASSED - WEEK 1 COMPLETE! ")
         print(" "*10 + "InvoiceMatchingAgent | SpendAnalyticsAgent | InventoryCheckAgent")
         print(" "*20 + "13 of 17 Agents Operational (76%)")
         print(f"{'='*80}\n")
     else:
         print(f"\n{'='*80}")
-        print(" "*20 + "⚠️ SOME VERIFICATIONS FAILED")
+        print(" "*20 + "️ SOME VERIFICATIONS FAILED")
         print(f"{'='*80}\n")
     
     return all_passed

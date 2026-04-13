@@ -52,11 +52,11 @@ def verify_table_schema(cursor, table_name, expected_columns):
     table_exists = cursor.fetchone()[0]
     
     if not table_exists:
-        print(f"❌ CRITICAL: Table '{table_name}' does NOT exist!")
+        print(f"CRITICAL: Table '{table_name}' does NOT exist!")
         print(f"   → Run: python backend/migrations/create_agent_tables.py")
         return False
     
-    print(f"✅ Table exists")
+    print(f"Table exists")
     
     # Get actual columns
     cursor.execute("""
@@ -76,22 +76,22 @@ def verify_table_schema(cursor, table_name, expected_columns):
     for col in expected_columns:
         if col in actual_columns:
             col_info = actual_columns[col]
-            print(f"  ✅ {col:25s} ({col_info['type']})")
+            print(f"  {col:25s} ({col_info['type']})")
         else:
-            print(f"  ❌ {col:25s} MISSING!")
+            print(f"  {col:25s} MISSING!")
             all_good = False
     
     # Check for extra columns
     extra_cols = set(actual_columns.keys()) - set(expected_columns)
     if extra_cols:
-        print(f"\n⚠️  Extra columns found (not in expected schema):")
+        print(f"\n️  Extra columns found (not in expected schema):")
         for col in extra_cols:
-            print(f"  ⚠️  {col}")
+            print(f"  ️  {col}")
     
     # Get row count
     cursor.execute(f"SELECT COUNT(*) FROM {table_name};")
     count = cursor.fetchone()[0]
-    print(f"\n📊 Row count: {count}")
+    print(f"\nRow count: {count}")
     
     return all_good
 
@@ -103,11 +103,11 @@ def verify_all_tables():
     print("="*60)
     
     if not DATABASE_URL:
-        print("\n❌ CRITICAL: DATABASE_URL not set!")
+        print("\nCRITICAL: DATABASE_URL not set!")
         print("   → Set in .env file")
         return False
     
-    print(f"\n✅ DATABASE_URL configured")
+    print(f"\nDATABASE_URL configured")
     
     try:
         conn = psycopg2.connect(DATABASE_URL)
@@ -125,25 +125,25 @@ def verify_all_tables():
         
         print("\n" + "="*60)
         if all_tables_ok:
-            print("✅ ALL TABLES VERIFIED - NO SCHEMA ISSUES")
+            print("ALL TABLES VERIFIED - NO SCHEMA ISSUES")
             print("="*60)
-            print("\n🚀 Safe to start the system!")
+            print("\nSafe to start the system!")
         else:
-            print("❌ SCHEMA ISSUES DETECTED")
+            print("SCHEMA ISSUES DETECTED")
             print("="*60)
-            print("\n⚠️  Fix required before starting!")
+            print("\n️  Fix required before starting!")
             print("   Run: python backend/migrations/create_agent_tables.py")
         print()
         
         return all_tables_ok
         
     except psycopg2.OperationalError as e:
-        print(f"\n❌ CRITICAL: Cannot connect to database!")
+        print(f"\nCRITICAL: Cannot connect to database!")
         print(f"   Error: {str(e)}")
         print(f"   → Check DATABASE_URL in .env")
         return False
     except Exception as e:
-        print(f"\n❌ CRITICAL: Verification failed!")
+        print(f"\nCRITICAL: Verification failed!")
         print(f"   Error: {str(e)}")
         return False
 

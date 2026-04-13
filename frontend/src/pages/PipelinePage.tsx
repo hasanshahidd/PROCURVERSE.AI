@@ -54,19 +54,37 @@ const PIPELINE_STEPS: PipelineStep[] = [
   { step: 9, name: "Payment Approval",       agent: "PaymentApprovalAgent",       emoji: "🏦", description: "Final multi-level payment sign-off and disbursement",     status: "idle" },
 ];
 
+// Sprint A fix (2026-04-11): payload wrapped in the {po_document, invoice_document}
+// envelope that backend PipelineRunRequest (routes/agentic.py:3647) expects.
+// Before this fix, the flat body shape 422'd on the backend and the catch
+// block silently fell through to MOCK_DATA so the 9 pipeline agents were
+// never invoked.
 const SAMPLE_PAYLOAD = {
-  po_number: "PO-2026-001",
-  vendor_id: 7,
-  vendor_name: "Acme Supplies Inc.",
-  invoice_number: "INV-2026-4421",
-  invoice_amount: 12500.00,
-  currency: "USD",
-  line_items: [
-    { description: "Office Chairs (x20)", qty: 20, unit_price: 450.00, total: 9000.00 },
-    { description: "Standing Desks (x5)",  qty: 5,  unit_price: 700.00, total: 3500.00 },
-  ],
-  department: "Operations",
-  budget_category: "CAPEX",
+  po_document: {
+    document_ref: "PO-2026-001",
+    po_number: "PO-2026-001",
+    vendor_id: 7,
+    vendor_name: "Acme Supplies Inc.",
+    source_channel: "ui_demo",
+    department: "Operations",
+    budget_category: "CAPEX",
+    line_items: [
+      { description: "Office Chairs (x20)", qty: 20, unit_price: 450.00, total: 9000.00 },
+      { description: "Standing Desks (x5)",  qty: 5,  unit_price: 700.00, total: 3500.00 },
+    ],
+    total_amount: 12500.00,
+    currency: "USD",
+  },
+  invoice_document: {
+    document_ref: "INV-2026-4421",
+    invoice_number: "INV-2026-4421",
+    invoice_amount: 12500.00,
+    invoice_currency: "USD",
+    source_channel: "ui_demo",
+    vendor_id: 7,
+    po_reference: "PO-2026-001",
+  },
+  dry_run: false,
 };
 
 // ─── Status helpers ───────────────────────────────────────────────────────────

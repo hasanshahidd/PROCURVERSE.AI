@@ -66,19 +66,26 @@ class BudgetVerificationAgent(BaseAgent):
     async def observe(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Gather PR details and current budget status"""
         observations = await super().observe(context)
-        
+
         # Extract PR data
         pr_data = context.get("pr_data", {})
-        
+        request_text = context.get("request", "")
+
         budget_requested = pr_data.get("budget", 0) or 0
+        department = pr_data.get("department") or ""
+
+        # If department not in pr_data, extract from the user's request text
+        if not department and request_text:
+            department = self._extract_department(request_text)
+
         observations.update({
             "pr_number": pr_data.get("pr_number"),
-            "department": pr_data.get("department"),
+            "department": department,
             "budget_requested": budget_requested,
-            "budget_category": pr_data.get("budget_category", "OPEX"),
+            "budget_category": pr_data.get("budget_category") or self._infer_budget_category(pr_data),
             "priority": pr_data.get("priority_level", "Medium"),
             "requester": pr_data.get("requester_name", "Unknown"),
-            "is_status_check": (budget_requested == 0),
+            "is_status_check": (budget_requested == 0 and not department),
         })
         
         logger.info(
@@ -98,7 +105,7 @@ class BudgetVerificationAgent(BaseAgent):
 
         # Pure status inquiry (no amount specified) → fetch full breakdown, skip commit
         if is_status_check:
-            logger.info(f"[BudgetAgent] 📊 Status-only query for {department} — using get_department_budget_status")
+            logger.info(f"[BudgetAgent] Status-only query for {department} — using get_department_budget_status")
             status_data = await self._get_department_status(department)
             return AgentDecision(
                 action="report_status",
@@ -109,21 +116,25 @@ class BudgetVerificationAgent(BaseAgent):
             )
 
         # Check budget availability using tool
-        logger.info(f"[BudgetAgent] 💰 Checking budget: {department}/{budget_category} for ${amount:,.2f}")
+        logger.info(f"[BudgetAgent] Checking budget: {department}/{budget_category} for ${amount:,.2f}")
         budget_check_result = await self._check_budget(
             department,
             budget_category,
             amount
         )
-        logger.info(f"[BudgetAgent] 📊 Budget check result: {budget_check_result.get('sufficient')} (Current: ${budget_check_result.get('current_budget', 0):,.2f}, After: {budget_check_result.get('utilization_after_approval', 0):.1f}%)")
+        logger.info(f"[BudgetAgent] Budget check result: {budget_check_result.get('sufficient')} (Current: ${budget_check_result.get('current_budget', 0):,.2f}, After: {budget_check_result.get('utilization_after_approval', 0):.1f}%)")
         
         if budget_check_result["success"]:
             is_sufficient = budget_check_result.get("sufficient", False)
             utilization = budget_check_result.get("utilization_after_approval", 0)
+            # Store budget figures in observations so _execute_action can access them
+            observations["available_budget"] = budget_check_result.get("available_budget", budget_check_result.get("current_budget", 0))
+            observations["current_budget"] = budget_check_result.get("current_budget", 0)
+            observations["utilization_after_approval"] = utilization
             
             if is_sufficient:
                 # Budget available
-                logger.debug(f"[BudgetAgent] ✅ Budget sufficient, analyzing utilization: {utilization:.1f}%")
+                logger.debug(f"[BudgetAgent] Budget sufficient, analyzing utilization: {utilization:.1f}%")
                 if utilization >= 95:
                     action = "approve_with_critical_alert"
                     confidence = 0.7
@@ -131,7 +142,7 @@ class BudgetVerificationAgent(BaseAgent):
                         f"Budget available but utilization will reach {utilization}%. "
                         "Critical threshold exceeded."
                     )
-                    logger.warning(f"[BudgetAgent] 🚨 CRITICAL: Utilization will be {utilization:.1f}%")
+                    logger.warning(f"[BudgetAgent] CRITICAL: Utilization will be {utilization:.1f}%")
                 elif utilization >= 90:
                     action = "approve_with_high_alert"
                     confidence = 0.8
@@ -150,7 +161,7 @@ class BudgetVerificationAgent(BaseAgent):
                     action = "approve"
                     confidence = 0.95
                     reasoning = f"Budget available. Utilization: {utilization}%."
-                    logger.info(f"[BudgetAgent] ✅ Approved: Utilization OK at {utilization:.1f}%")
+                    logger.info(f"[BudgetAgent] Approved: Utilization OK at {utilization:.1f}%")
                 
                 alternatives = ["update_committed_budget"]
             else:
@@ -208,7 +219,29 @@ class BudgetVerificationAgent(BaseAgent):
                     budget_category,
                     amount
                 )
-            
+
+            # Extract budget figures from the decision context (observations + budget_check_result)
+            ctx = decision.context or {}
+            budget_requested = ctx.get("budget_requested", amount)
+            # Parse utilization from reasoning string if not in context
+            utilization = ctx.get("utilization_after_approval", "")
+            available = ctx.get("available_budget", ctx.get("current_budget", ""))
+            if not utilization:
+                # Try to extract from reasoning: "Utilization: 35.0%"
+                import re
+                m = re.search(r'[Uu]tilization[:\s]*(\d+\.?\d*)%', decision.reasoning or "")
+                if m:
+                    utilization = m.group(1)
+            if not available and budget_requested:
+                # Estimate: if utilization is known, work backwards
+                try:
+                    util_pct = float(utilization) if utilization else 0
+                    if util_pct > 0:
+                        total_budget = budget_requested / (util_pct / 100) if util_pct < 100 else budget_requested
+                        available = f"{total_budget - budget_requested:,.0f}"
+                except (ValueError, ZeroDivisionError):
+                    pass
+
             return {
                 "status": "approved",
                 "budget_verified": True,
@@ -217,7 +250,10 @@ class BudgetVerificationAgent(BaseAgent):
                 "reasoning": decision.reasoning,
                 "budget_update": update_result,
                 "budget_reserved": reserve_budget,
-                "alert_level": self._get_alert_level(action)
+                "alert_level": self._get_alert_level(action),
+                "available_budget": available or "confirmed",
+                "utilization": utilization or "",
+                "budget_requested": budget_requested,
             }
         
         elif action == "reject_insufficient_budget":
@@ -271,10 +307,12 @@ class BudgetVerificationAgent(BaseAgent):
             if not budget_tool:
                 return {"success": False, "error": "Budget check tool not found"}
             
-            # Call the tool
-            result_json = budget_tool.func(department, budget_category, amount)
+            # Call the tool in a thread to avoid blocking the asyncio event loop
+            # (psycopg2 queries inside are synchronous)
+            import asyncio
+            result_json = await asyncio.to_thread(budget_tool.func, department, budget_category, amount)
             result = json.loads(result_json)
-            
+
             return result
         except Exception as e:
             logger.error(f"Budget check failed: {e}")
@@ -289,12 +327,13 @@ class BudgetVerificationAgent(BaseAgent):
             )
             if not status_tool:
                 return {"success": False, "error": "Budget status tool not found"}
-            result_json = status_tool.func(department)
+            import asyncio
+            result_json = await asyncio.to_thread(status_tool.func, department)
             return json.loads(result_json)
         except Exception as e:
             logger.error(f"Budget status fetch failed: {e}")
             return {"success": False, "error": str(e)}
-    
+
     async def _update_committed_budget(
         self,
         department: str,
@@ -308,12 +347,13 @@ class BudgetVerificationAgent(BaseAgent):
                 (t for t in self.tools if t.name == "update_committed_budget"),
                 None
             )
-            
+
             if not update_tool:
                 return {"success": False, "error": "Update tool not found"}
-            
-            # Call the tool
-            result_json = update_tool.func(department, budget_category, amount)
+
+            # Call the tool in a thread to avoid blocking the asyncio event loop
+            import asyncio
+            result_json = await asyncio.to_thread(update_tool.func, department, budget_category, amount)
             result = json.loads(result_json)
             
             return result
@@ -321,6 +361,39 @@ class BudgetVerificationAgent(BaseAgent):
             logger.error(f"Budget update failed: {e}")
             return {"success": False, "error": str(e)}
     
+    @staticmethod
+    @staticmethod
+    def _infer_budget_category(pr_data: dict) -> str:
+        """Infer CAPEX vs OPEX from the product/item description."""
+        product = (
+            pr_data.get("product_name") or pr_data.get("product")
+            or pr_data.get("item") or pr_data.get("item_name") or ""
+        ).lower()
+        justification = (pr_data.get("justification") or pr_data.get("reason") or "").lower()
+        text = f"{product} {justification}"
+        capex_keywords = [
+            "server", "laptop", "computer", "hardware", "equipment",
+            "machine", "vehicle", "furniture", "building", "infrastructure",
+            "network", "switch", "router", "storage", "desktop", "monitor",
+            "printer", "device", "asset", "capital",
+        ]
+        for kw in capex_keywords:
+            if kw in text:
+                return "CAPEX"
+        return "OPEX"
+
+    def _extract_department(text: str) -> str:
+        """Extract department name from user's natural-language request."""
+        import re
+        text_lower = text.lower()
+        known_depts = ["IT", "Finance", "Operations", "Procurement", "HR",
+                        "Marketing", "Sales", "Engineering", "Legal", "R&D"]
+        for dept in known_depts:
+            # Match "IT department", "for IT", "IT budget", etc.
+            if re.search(r'\b' + re.escape(dept.lower()) + r'\b', text_lower):
+                return dept
+        return ""
+
     def _get_alert_level(self, action: str) -> str:
         """Determine alert level from action"""
         if "critical" in action:

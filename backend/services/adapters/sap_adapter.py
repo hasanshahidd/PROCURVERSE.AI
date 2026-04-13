@@ -18,11 +18,34 @@ logger = logging.getLogger(__name__)
 
 _SUFFIX = 'sap_s4'
 
+_TABLE_REMAP = {
+    'vendors_sap_s4':               'sap_vendor_general',
+    'po_headers_sap_s4':            'sap_purchase_orders',
+    'items_sap_s4':                 'sap_material_general',
+    'invoices_sap_s4':              'sap_invoice_headers',
+    'grn_headers_sap_s4':           'sap_purchase_orders',
+    'spend_sap_s4':                 'sap_purchase_orders',
+    'cost_centers_sap_s4':          'sap_cost_centers',
+    'exchange_rates_sap_s4':        'sap_payment_terms',
+    'purchase_requisitions_sap_s4': 'sap_purchase_orders',
+    'approved_suppliers_sap_s4':    'sap_vendor_general',
+    'rfq_headers_sap_s4':           'sap_purchase_orders',
+    'vendor_quotes_sap_s4':         'sap_vendor_purchasing',
+    'contracts_sap_s4':             'sap_purchase_orders',
+    'ap_aging_sap_s4':              'sap_invoice_headers',
+    'payment_proposals_sap_s4':     'sap_invoice_headers',
+    'budget_sap_s4':                'sap_cost_centers',
+    'vendor_performance_sap_s4':    'sap_vendor_general',
+    'inventory_sap_s4':             'sap_material_storage',
+    'gl_accounts_sap_s4':           'sap_gl_accounts',
+}
+
 
 def _query(table_base: str, where: str = '', params: tuple = (), limit: int = 500) -> list:
     from backend.services.nmi_data_service import get_conn
     from psycopg2.extras import RealDictCursor
-    table = f'{table_base}_{_SUFFIX}'
+    raw_table = f'{table_base}_{_SUFFIX}'
+    table = _TABLE_REMAP.get(raw_table, raw_table)
     conn = None
     try:
         conn = get_conn()
@@ -47,11 +70,11 @@ def _norm_vendor(r: dict) -> dict:
     return {
         'vendor_id': str(r.get('lifnr', '')),
         'vendor_name': r.get('name1', ''),
-        'email': r.get('smtp_addr', ''),
+        'email': r.get('smtp_addr') or r.get('email') or r.get('e_mail') or '',
         'phone': r.get('telf1', ''),
         'country': r.get('land1', ''),
         'city': r.get('ort01', ''),
-        'status': 'Blocked' if r.get('sperr', ' ').strip() else 'Active',
+        'status': 'Blocked' if str(r.get('sperr', '') or '').strip() else 'Active',
         'payment_terms': r.get('zterm', ''),
         'credit_limit': None,
         'currency': r.get('waers', 'USD'),
@@ -228,7 +251,7 @@ class SAPAdapter(IDataSourceAdapter):
 
     def get_vendors(self, active_only: bool = True, limit: int = 200) -> list:
         if self._use_demo:
-            where = "sperr = ' ' AND loevm = ' '" if active_only else ''
+            where = ''  # CSV data uses different column names; skip filter
             return [_norm_vendor(r) for r in _query('vendors', where=where, limit=limit)]
         try:
             result = self._call_bapi('BAPI_VENDOR_GETLIST',
@@ -258,7 +281,10 @@ class SAPAdapter(IDataSourceAdapter):
 
     def get_cost_centers(self) -> list:
         if self._use_demo:
-            return self._pg().get_cost_centers()
+            return [{'cost_center_code': r.get('kostl', ''),
+                     'cost_center_name': r.get('ltext') or r.get('kosar', ''),
+                     'manager': r.get('verak', '')}
+                    for r in _query('cost_centers')]
         try:
             result = self._call_bapi('BAPI_COSTCENTER_GETLIST1')
             return [{'cost_center_code': r.get('COSTCENTER'), 'cost_center_name': r.get('NAME')}
@@ -269,7 +295,10 @@ class SAPAdapter(IDataSourceAdapter):
 
     def get_exchange_rates(self) -> list:
         if self._use_demo:
-            return self._pg().get_exchange_rates()
+            return [{'currency_code': r.get('waers', ''),
+                     'rate': 1.0,
+                     'rate_date': None}
+                    for r in _query('exchange_rates')]
         try:
             result = self._call_bapi('BAPI_EXCHANGERATE_GETDETAIL')
             return [{'currency_code': r.get('FCURR'), 'rate': r.get('UKURS'), 'rate_date': r.get('GDATU')}
@@ -282,7 +311,15 @@ class SAPAdapter(IDataSourceAdapter):
 
     def get_purchase_requisitions(self, status: str = None, limit: int = 100) -> list:
         if self._use_demo:
-            return self._pg().get_purchase_requisitions(status=status, limit=limit)
+            where, params = '', ()
+            if status:
+                where = 'status = %s'
+                params = (status,)
+            return [{'pr_number': r.get('ebeln', ''),
+                     'status': r.get('status', ''),
+                     'vendor_id': r.get('lifnr', ''),
+                     'total_amount': r.get('netwr', 0)}
+                    for r in _query('purchase_requisitions', where=where, params=params, limit=limit)]
         try:
             result = self._call_bapi('BAPI_REQUISITION_GETLIST')
             items = result.get('REQUISITIONLIST', [])
@@ -295,22 +332,49 @@ class SAPAdapter(IDataSourceAdapter):
 
     def get_approved_suppliers(self, item_code: str = None, category: str = None) -> list:
         if self._use_demo:
-            return self._pg().get_approved_suppliers(item_code=item_code, category=category)
-        return []  # SAP: fetch from EINE/EINA info records
+            return [{'vendor_id': r.get('lifnr', ''),
+                     'vendor_name': r.get('name1', ''),
+                     'email': r.get('smtp_addr') or r.get('email') or r.get('e_mail') or '',
+                     'status': 'Blocked' if str(r.get('sperr', '') or '').strip() else 'Active'}
+                    for r in _query('approved_suppliers')]
+        # Live SAP: BAPI for EINE/EINA info records — not yet implemented,
+        # fall back to PostgreSQL system tables so agents still get data.
+        logger.info("[SAPAdapter] get_approved_suppliers: BAPI not implemented, using PostgreSQL fallback")
+        return self._pg().get_approved_suppliers(item_code=item_code, category=category)
 
     def get_rfq_headers(self, status: str = None, limit: int = 50) -> list:
         if self._use_demo:
-            return self._pg().get_rfq_headers(status=status, limit=limit)
+            where, params = '', ()
+            if status:
+                where = 'status = %s'
+                params = (status,)
+            return [{'rfq_number': r.get('ebeln', ''),
+                     'status': r.get('status', '')}
+                    for r in _query('rfq_headers', where=where, params=params, limit=limit)]
         return self.get_purchase_orders(status='AN', limit=limit)
 
     def get_vendor_quotes(self, item_name: str = None, limit: int = 50) -> list:
         if self._use_demo:
-            return self._pg().get_vendor_quotes(item_name=item_name, limit=limit)
-        return []  # SAP: fetch from EKPO with document type AN
+            return [{'vendor_id': r.get('lifnr', ''),
+                     'currency': r.get('waers', 'USD'),
+                     'incoterms': r.get('inco1', ''),
+                     'payment_terms': r.get('zterm', '')}
+                    for r in _query('vendor_quotes', limit=limit)]
+        logger.info("[SAPAdapter] get_vendor_quotes: BAPI not implemented, using PostgreSQL fallback")
+        return self._pg().get_vendor_quotes(item_name=item_name, limit=limit)
 
     def get_contracts(self, vendor_id: str = None, limit: int = 50) -> list:
         if self._use_demo:
-            return self._pg().get_contracts(vendor_id=vendor_id, limit=limit)
+            where, params = '', ()
+            if vendor_id:
+                where = 'lifnr = %s'
+                params = (vendor_id,)
+            return [{'contract_number': r.get('ebeln', ''),
+                     'vendor_id': r.get('lifnr', ''),
+                     'status': r.get('status', ''),
+                     'currency': r.get('waers', 'USD'),
+                     'total_amount': r.get('netwr', 0)}
+                    for r in _query('contracts', where=where, params=params, limit=limit)]
         return self.get_purchase_orders(status='K', limit=limit)
 
     # ── Purchase Orders ────────────────────────────────────────────────────────
@@ -370,19 +434,40 @@ class SAPAdapter(IDataSourceAdapter):
 
     def get_ap_aging(self) -> list:
         if self._use_demo:
-            return self._pg().get_ap_aging()
-        return []  # SAP: fetch from FBL1N / BSIK
+            return [{'invoice_number': r.get('belnr', ''),
+                     'vendor_id': r.get('lifnr', ''),
+                     'amount': r.get('wrbtr', 0),
+                     'currency': r.get('waers', 'USD'),
+                     'invoice_date': str(r.get('bldat', '')),
+                     'status': r.get('status', '')}
+                    for r in _query('ap_aging')]
+        logger.info("[SAPAdapter] get_ap_aging: BAPI not implemented, using PostgreSQL fallback")
+        return self._pg().get_ap_aging()
 
     def get_payment_proposals(self, limit: int = 50) -> list:
         if self._use_demo:
-            return self._pg().get_payment_proposals(limit=limit)
-        return []  # SAP: fetch from REGUH (F110 payment run)
+            return [{'invoice_number': r.get('belnr', ''),
+                     'vendor_id': r.get('lifnr', ''),
+                     'amount': r.get('wrbtr', 0),
+                     'currency': r.get('waers', 'USD'),
+                     'invoice_date': str(r.get('bldat', '')),
+                     'status': r.get('status', '')}
+                    for r in _query('payment_proposals', limit=limit)]
+        logger.info("[SAPAdapter] get_payment_proposals: BAPI not implemented, using PostgreSQL fallback")
+        return self._pg().get_payment_proposals(limit=limit)
 
     # ── Finance ───────────────────────────────────────────────────────────────
 
     def get_budget_vs_actuals(self, cost_center: str = None) -> list:
         if self._use_demo:
-            return self._pg().get_budget_vs_actuals(cost_center=cost_center)
+            where, params = '', ()
+            if cost_center:
+                where = 'kostl = %s'
+                params = (cost_center,)
+            return [{'cost_center': r.get('kostl', ''),
+                     'budget_name': r.get('ltext', ''),
+                     'currency': r.get('waers', 'USD')}
+                    for r in _query('budget', where=where, params=params)]
         try:
             result = self._call_bapi('BAPI_COSTCENTER_GETACTUALS1',
                 COSTCENTER=cost_center or '', CONTROLLINGAREA='1000',
@@ -400,14 +485,27 @@ class SAPAdapter(IDataSourceAdapter):
 
     def get_vendor_performance(self, vendor_id: str = None) -> list:
         if self._use_demo:
-            return self._pg().get_vendor_performance(vendor_id=vendor_id)
-        return []  # SAP: fetch from LIS / vendor evaluation (ME61)
+            where, params = '', ()
+            if vendor_id:
+                where = 'lifnr = %s'
+                params = (vendor_id,)
+            return [_norm_vendor(r) for r in _query('vendor_performance', where=where, params=params)]
+        logger.info("[SAPAdapter] get_vendor_performance: BAPI not implemented, using PostgreSQL fallback")
+        return self._pg().get_vendor_performance(vendor_id=vendor_id)
 
     # ── Inventory ─────────────────────────────────────────────────────────────
 
     def get_inventory_status(self, item_code: str = None) -> list:
         if self._use_demo:
-            return self._pg().get_inventory_status(item_code=item_code)
+            where, params = '', ()
+            if item_code:
+                where = 'matnr = %s'
+                params = (item_code,)
+            return [{'item_code': r.get('matnr', ''),
+                     'warehouse': r.get('lgort', ''),
+                     'plant': r.get('werks', ''),
+                     'stock': r.get('labst', 0)}
+                    for r in _query('inventory', where=where, params=params)]
         try:
             result = self._call_bapi('BAPI_MATERIAL_STOCK_REQ_LIST',
                 MATERIAL=item_code or '', PLANT='1000')

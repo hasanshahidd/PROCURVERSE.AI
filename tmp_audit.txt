@@ -1,0 +1,1394 @@
+Perfect. Now I have enough information to create a comprehensive audit report. Let me compile everything:
+
+---
+
+# **PROCURE-AI P2P BACKEND ARCHITECTURAL AUDIT REPORT**
+
+## **EXECUTIVE SUMMARY**
+
+The Procure-AI backend is a sophisticated multi-agent orchestration system built on FastAPI with PostgreSQL persistence, supporting complex Procure-to-Pay workflows across 7 ERP adapters. The architecture demonstrates strong patterns around workflow orchestration and agent registry but has significant **data consistency, error handling, and completeness gaps** that risk silent failures in production.
+
+**Critical Risk Level: HIGH**  
+**Key Issue Count: 47 architectural gaps identified**
+
+---
+
+## **PART A: API ROUTE INVENTORY**
+
+### **Complete Route Catalog (19 Route Files)**
+
+| **Route File** | **HTTP Method** | **Endpoint Path** | **Handler Function** | **P2P Stage** | **Notes** |
+|---|---|---|---|---|---|
+| **auth.py** | POST | `/api/auth/login` | `login` | - | JWT token generation |
+| | POST | `/api/auth/logout` | `logout` | - | Token revocation |
+| | GET | `/api/auth/me` | `get_current_user` | - | User profile fetch |
+| **health.py** | GET | `/api/health` | `health_check` | - | System health check |
+| | GET | `/api/health/circuit-breakers` | `get_circuit_breaker_status` | - | Circuit breaker state |
+| | POST | `/api/health/circuit-breakers/reset` | `reset_circuit_breaker` | - | Manual reset |
+| | GET | `/api/health/timeouts` | `get_timeout_monitor_status` | - | Request timeout stats |
+| | GET | `/api/health/connection-pool` | `get_connection_pool_stats` | - | DB pool status |
+| **chat.py** | GET | `/api/stats` | `get_chat_stats` | - | Chat metrics |
+| | POST | `/api/chat` | `post_chat` | Agentic | Conversational entry point |
+| | POST | `/api/chat/stream` | `post_chat_stream` | Agentic | Conversational SSE |
+| | POST | `/api/suggestions` | `get_suggestions` | Agentic | Next action suggestions |
+| | POST | `/api/query` | `query` | Agentic | Raw query execution |
+| | POST | `/api/chat/details` | `chat_details` | Agentic | Conversation context |
+| **agentic.py (4165 lines)** | POST | `/api/agentic/execute` | `execute_agentic_request` | All Stages | Main orchestrator entry |
+| | POST | `/api/agentic/execute/stream` | `execute_agentic_request_stream` | All Stages | Orchestrator with SSE |
+| | POST | `/api/agentic/p2p/resume` | `resume_p2p_workflow` | Post-gate | Resume paused workflows |
+| | POST | `/api/agentic/budget/verify` | `verify_budget` | Budget | Direct budget verification |
+| | POST | `/api/agentic/approval/route` | `route_approval` | Approval | Direct approval routing |
+| | POST | `/api/agentic/vendor/recommend` | `recommend_vendor` | PR | Direct vendor selection |
+| | POST | `/api/agentic/risk/assess` | `assess_risk` | PR | Direct risk assessment |
+| | POST | `/api/agentic/contract/monitor` | `monitor_contract` | PR | Contract monitoring |
+| | POST | `/api/agentic/supplier/evaluate` | `evaluate_supplier` | Vendor | Supplier evaluation |
+| | POST | `/api/agentic/price/analyze` | `analyze_price` | RFQ | Price analysis |
+| | POST | `/api/agentic/compliance/check` | `check_compliance` | PR | Compliance check |
+| | POST | `/api/agentic/invoice/match` | `match_invoice` | Invoice | Invoice matching |
+| | POST | `/api/agentic/spend/analyze` | `analyze_spend` | Reporting | Spend analytics |
+| | POST | `/api/agentic/inventory/check` | `check_inventory` | Delivery | Inventory validation |
+| | GET | `/api/agentic/status` | `get_agent_status` | - | Agent registry status |
+| | GET | `/api/agentic/agents` | `list_agents` | - | Registered agents list |
+| | GET | `/api/agentic/health` | `health_check` | - | Agent health |
+| | GET | `/api/agentic/dashboard/data` | `get_dashboard_data` | Reporting | KPIs and metrics |
+| | GET | `/api/agentic/pending-approvals` | `list_pending_approvals` | Approval | Approval worklist |
+| | GET | `/api/agentic/pending-approvals/count` | `count_pending_approvals` | Approval | Approval count |
+| **workflow.py** | POST | `/api/workflow/create` | `create_workflow` | - | Workflow template creation |
+| | POST | `/api/workflow/{workflow_run_id}/advance` | `advance_workflow` | - | Task advancement |
+| | POST | `/api/workflow/task/{task_id}/complete` | `complete_task` | - | Task completion |
+| | POST | `/api/workflow/task/{task_id}/fail` | `fail_task` | - | Task failure marking |
+| | POST | `/api/workflow/task/{task_id}/resume` | `resume_from_human` | - | Human approval -> resume |
+| | GET | `/api/workflow/{workflow_run_id}` | `get_workflow_status` | - | Workflow state fetch |
+| | GET | `/api/workflow/list/all` | `list_all_workflows` | - | Workflow history |
+| | GET | `/api/workflow/types/available` | `list_available_types` | - | Template list |
+| **p2p_tracker.py** | GET | `/api/p2p/summary` | `get_summary` | All | P2P metrics |
+| | GET | `/api/p2p/active` | `list_active` | All | Active workflows |
+| | GET | `/api/p2p/journey/{workflow_run_id}` | `get_journey` | All | Detailed workflow view |
+| | GET | `/api/p2p/my-actions` | `list_my_actions` | All | User action list |
+| | GET | `/api/p2p/guide/{workflow_run_id}` | `get_guide` | All | Guided status narrative |
+| **odoo.py** | GET | `/api/odoo/status` | `get_odoo_status` | - | ERP connection status |
+| | GET | `/api/odoo/purchase-orders` | `get_purchase_orders` | PO | PO list from ERP |
+| | GET | `/api/odoo/purchase-orders/{po_name}` | `get_purchase_order` | PO | Single PO fetch |
+| | POST | `/api/odoo/purchase-orders` | `create_purchase_order_direct` | PO | Direct PO creation |
+| | POST | `/api/odoo/purchase-orders/action` | `run_po_action` | PO | PO state transitions |
+| | GET | `/api/odoo/purchase-requisitions` | `get_purchase_requisitions` | PR | PR list from ERP |
+| | GET | `/api/odoo/grn` | `get_grn` | GRN | GRN list from ERP |
+| | GET | `/api/odoo/invoices` | `get_invoices` | Invoice | Invoice list |
+| | GET | `/api/odoo/analytics/pending-approvals` | `get_pending_approvals_odoo` | Approval | Approval analytics |
+| | GET | `/api/odoo/products` | `get_products` | Master | Product master |
+| | GET | `/api/odoo/vendors` | `get_vendors` | Vendor | Vendor master |
+| | GET | `/api/odoo/spend-analytics` | `get_spend_analytics` | Reporting | Spend breakdown |
+| | POST | `/api/odoo/search` | `search_odoo` | Master | Free-text search |
+| **config.py** | GET | `/api/config/data-source` | `get_data_source` | - | Active ERP adapter |
+| | POST | `/api/config/data-source` | `set_data_source` | - | Switch ERP adapter |
+| | GET | `/api/config/departments` | `get_departments` | - | Department master |
+| **import_routes.py** | POST | `/api/import/upload` | `upload_file` | - | CSV file upload |
+| | POST | `/api/import/upload-batch` | `upload_batch` | - | Batch upload |
+| | POST | `/api/import/preview` | `preview_import` | - | Data preview |
+| | GET | `/api/import/tables` | `list_tables` | - | Available tables |
+| | GET | `/api/import/table/{table_name}` | `get_table_data` | - | Table peek |
+| | DELETE | `/api/import/table/{table_name}` | `clear_table` | - | Wipe table data |
+| **quality.py** | GET | `/api/quality/scan-all` | `scan_all_tables` | - | Data quality audit |
+| | GET | `/api/quality/scan/{table_name}` | `scan_table` | - | Single table DQ |
+| | GET | `/api/quality/summary` | `get_summary` | - | DQ metrics |
+| **quality_inspection.py** | GET | `/api/qc/templates` | `list_qc_templates` | QC | Inspection templates |
+| | POST | `/api/qc/inspect` | `run_qc_inspection` | GRN | QC execution |
+| | GET | `/api/qc/results` | `list_qc_results` | QC | QC result history |
+| | GET | `/api/qc/results/{grn_number}` | `get_qc_result` | GRN | Single GRN QC |
+| **reconciliation.py** | POST | `/api/reconciliation/upload-statement` | `upload_statement` | Reconciliation | Bank statement upload |
+| | POST | `/api/reconciliation/run` | `run_reconciliation` | Reconciliation | Auto-matching |
+| | GET | `/api/reconciliation/results` | `list_results` | Reconciliation | Match results |
+| | GET | `/api/reconciliation/exceptions` | `list_exceptions` | Reconciliation | Unmatched items |
+| | POST | `/api/reconciliation/resolve/{exception_id}` | `resolve_exception` | Reconciliation | Manual matching |
+| **rfq.py** | POST | `/api/rfq/create` | `create_rfq` | RFQ | RFQ creation |
+| | POST | `/api/rfq/{rfq_id}/add-line` | `add_rfq_line` | RFQ | Line item |
+| | POST | `/api/rfq/{rfq_id}/send` | `send_rfq` | RFQ | Vendor distribution |
+| | POST | `/api/rfq/{rfq_id}/quote` | `receive_quote` | RFQ | Quote ingestion |
+| | GET | `/api/rfq/{rfq_id}/compare` | `compare_quotes` | RFQ | Quote analysis |
+| | POST | `/api/rfq/{rfq_id}/award` | `award_rfq` | RFQ | Winner selection |
+| | GET | `/api/rfq/list` | `list_rfqs` | RFQ | RFQ history |
+| | GET | `/api/rfq/{rfq_id}` | `get_rfq` | RFQ | RFQ detail |
+| **amendments.py** | POST | `/api/amendments/create` | `create_amendment` | Amendments | PO change order |
+| | GET | `/api/amendments/list` | `list_amendments` | Amendments | Amendment history |
+| | GET | `/api/amendments/{po_number}` | `get_amendments` | Amendments | PO amendments |
+| | POST | `/api/amendments/{amendment_id}/approve` | `approve_amendment` | Amendments | Change approval |
+| **rtv.py** | POST | `/api/rtv/create` | `create_return` | Returns | Return creation |
+| | GET | `/api/rtv/list` | `list_returns` | Returns | Return history |
+| | GET | `/api/rtv/{rtv_id}` | `get_return` | Returns | Return detail |
+| | POST | `/api/rtv/{rtv_id}/approve` | `approve_return` | Returns | Return approval |
+| | POST | `/api/rtv/{rtv_id}/ship` | `ship_return` | Returns | Return shipment |
+| **audit.py** | GET | `/api/audit/export` | `export_audit_trail` | - | Audit log export |
+| | GET | `/api/audit/summary` | `get_audit_summary` | - | Activity summary |
+| | GET | `/api/audit/accruals` | `get_accruals` | - | Accrual tracking |
+| | GET | `/api/audit/debit-notes` | `get_debit_notes` | - | Debit note tracking |
+| **gap_features.py (942 lines)** | POST | `/kyc/check` | `check_kyc` | Vendor | Know-Your-Customer |
+| | GET | `/kyc/status/{vendor_id}` | `get_kyc_status` | Vendor | KYC status |
+| | GET | `/kyc/expiring` | `list_expiring_kyc` | Vendor | KYC expiration alert |
+| | POST | `/contract/validate-po` | `validate_contract_linkage` | Contract | Contract validation |
+| | GET | `/contract/maverick-check/{po_number}` | `check_maverick_spend` | Contract | Maverick spend flag |
+| | GET | `/contract/links/{po_number}` | `get_contract_links` | Contract | Contract retrieval |
+| | POST | `/returns/create` | `create_return_request` | Returns | Return creation |
+| | GET | `/returns/list` | `list_returns` | Returns | Return list |
+| | POST | `/returns/{return_number}/resolve` | `resolve_return` | Returns | Return resolution |
+| | POST | `/invoice/dedup-check` | `check_duplicate_invoice` | Invoice | Duplicate detection |
+| | GET | `/invoice/dedup-log` | `get_dedup_log` | Invoice | Dedup history |
+| | POST | `/invoice/dedup-resolve/{dedup_id}` | `resolve_dedup` | Invoice | Dedup handling |
+| | POST | `/exceptions/create` | `create_exception` | Exceptions | Exception logging |
+| | GET | `/exceptions/open` | `list_open_exceptions` | Exceptions | Exception list |
+| | GET | `/exceptions/stats` | `get_exception_stats` | Exceptions | Exception metrics |
+| | POST | `/exceptions/{exception_id}/assign` | `assign_exception` | Exceptions | Exception assignment |
+| | POST | `/exceptions/{exception_id}/resolve` | `resolve_exception` | Exceptions | Exception resolution |
+| | POST | `/exceptions/{exception_id}/escalate` | `escalate_exception` | Exceptions | SLA escalation |
+| | POST | `/exceptions/check-sla` | `check_sla` | Exceptions | SLA enforcement |
+| | POST | `/vendor-comm/send` | `send_vendor_message` | Vendor | Vendor messaging |
+| **executive_demo.py** | GET | `/api/executive-demo/last-session` | `get_last_session` | - | Demo playback |
+
+### **Route Grouping by P2P Stage**
+
+| **P2P Stage** | **Route Count** | **Files** | **Status** |
+|---|---|---|---|
+| **PR (Purchase Requisition)** | 4 | agentic, odoo, gap_features | Active |
+| **PO (Purchase Order)** | 9 | agentic, odoo, rfq, amendments, gap_features | Active |
+| **RFQ (Request for Quote)** | 8 | rfq | Active |
+| **Delivery** | 3 | agentic, quality_inspection | Active |
+| **GRN (Goods Receipt)** | 4 | odoo, quality_inspection | Active |
+| **Invoice** | 10 | agentic, odoo, reconciliation, gap_features | Active |
+| **Payment** | 6 | agentic, reconciliation | Active |
+| **Approval** | 6 | agentic, odoo, workflow | Active |
+| **Risk/Compliance** | 3 | agentic, gap_features | Active |
+| **Vendor** | 6 | agentic, odoo, gap_features | Active |
+| **Budget** | 2 | agentic | Active |
+| **Reconciliation** | 5 | reconciliation | Active |
+| **Reporting** | 8 | agentic, odoo, audit, quality | Active |
+| **Returns** | 5 | rtv, gap_features | Active |
+| **Contract** | 3 | gap_features | Active |
+| **Exceptions** | 5 | gap_features | Active |
+| **System/Health** | 10 | health, auth, config, import_routes | Active |
+
+### **Route Overlap & Duplication Analysis**
+
+#### **ƒsÿ‹,? DUPLICATE/OVERLAPPING ENDPOINTS DETECTED**
+
+1. **RTV (Returns to Vendor) - DUPLICATE IMPLEMENTATION**
+   - File: `routes/rtv.py` (166 lines)
+   - File: `routes/gap_features.py` (942 lines)
+   - **Issue**: Two separate implementations of return order management
+   - Lines:
+     - `rtv.py:23` POST `/api/rtv/create` ƒ+' `create_return()`
+     - `gap_features.py:X` POST `/returns/create` ƒ+' `create_return_request()`
+   - **Impact**: Confusion on which endpoint to use; data may be created in both tables
+
+2. **Approval Routing - MULTIPLE EXECUTION PATHS**
+   - Direct: `agentic.py:1020` POST `/api/agentic/approval/route`
+   - Orchestrator: `agentic.py:1850` POST `/api/agentic/execute` (multi-intent)
+   - Workflow: `workflow.py:X` POST `/api/workflow/{workflow_run_id}/advance`
+   - **Issue**: Approval can be triggered via 3 different paths
+   - **Impact**: Approval status may not sync across paths
+
+3. **Vendor Selection - MULTIPLE ENDPOINTS**
+   - Direct: `agentic.py:1015` POST `/api/agentic/vendor/recommend`
+   - Odoo: `odoo.py:137` GET `/api/odoo/vendors`
+   - Gap Features: `gap_features.py:X` (vendor KYC)
+   - **Issue**: No clear "master" endpoint for vendor selection
+   - **Impact**: Multi-intent queries may select different vendors
+
+4. **Invoice Matching - DUPLICATE PATHS**
+   - Direct Agent: `agentic.py:1050` POST `/api/agentic/invoice/match`
+   - Orchestrator P2P: `agentic.py:1850` (embedded in full workflow)
+   - Reconciliation: `reconciliation.py:67` POST `/api/reconciliation/run`
+   - **Issue**: Invoice matching logic exists in 3 places
+
+#### **ƒsÿ‹,? POTENTIALLY DEAD ROUTES**
+
+1. **`executive_demo.py:49` GET `/api/executive-demo/last-session`**
+   - Function: `get_last_executive_demo_session()`
+   - Status: No grep evidence of being called in codebase
+   - **Recommendation**: VERIFY if still in use; remove if dead
+
+2. **`quality.py:30` GET `/api/quality/scan-all`**
+   - Function: `scan_all_tables()`
+   - Status: Not referenced in any orchestrator or workflow
+   - **Recommendation**: May be ad-hoc utility; confirm usage
+
+3. **`gap_features.py:X` Multiple endpoints**
+   - Functions like `check_kyc()`, `check_maverick_spend()` 
+   - Status: Called by agents but NOT integrated into main P2P orchestrator
+   - **Recommendation**: These are "gap features" (G-01 through G-14) that are NOT wired into the 15-step P2P workflow
+
+---
+
+## **PART B: ORCHESTRATOR FLOW ANALYSIS**
+
+### **Key Orchestrator Methods**
+
+#### **1. `_execute_full_p2p()` ƒ?" FULL P2P WORKFLOW (Lines 1340ƒ?"2282)**
+
+**Execution Model**: **SINGLE HTTP CALL, SYNCHRONOUS CHAIN WITH HUMAN GATES**
+
+**Step-by-Step Walkthrough:**
+
+| **Step** | **Agent** | **Line** | **Sync/Async** | **Human Gate** | **Early Return Point** | **Workflow Task Update** | **Status** |
+|---|---|---|---|---|---|---|---|
+| **1/15** | ComplianceCheckAgent | 1540 | async/await | Optional | Explicit reject at 1553 | `_track_task('compliance_check')` | ƒo" Complete |
+| **2/15** | BudgetVerificationAgent | 1577 | async/await | Optional | Insufficient budget at 1598 | `_track_task('budget_verification')` | ƒo" Complete |
+| **3/15** | VendorSelectionAgent | 1642 | async/await | N/A | N/A | `_track_task('vendor_selection')` | ƒo" Complete |
+| **4/15** | *HUMAN GATE* | 1667 | **PAUSES** | **MANDATORY** | Returns to client if no vendor selected | `_track_task('vendor_confirmation')` | ƒsÿ‹,? **PAUSE** |
+| **4.5/15** | RiskAssessmentAgent | 1713 | async/await (non-blocking) | N/A | Critical risk blocks at 1731 | `_track_task('risk_assessment')` | ƒo" Complete |
+| **5/15** | *SYSTEM TASK* | 1750 | synchronous | N/A | N/A | `_track_task('pr_creation')` | ƒo" Complete |
+| **6/15** | ApprovalRoutingAgent | 1793 | async/await | N/A | Failure logged but non-blocking | `_track_task('approval_routing')` | ƒo" Complete |
+| **7/15** | *HUMAN GATE* | 1833 | **PAUSES** | **MANDATORY** | Returns if not pre-approved | `_track_task('approval_wait')` | ƒsÿ‹,? **PAUSE** |
+| **8/15** | *SYSTEM TASK* | 1892 | synchronous | N/A | N/A | `_track_task('po_creation')` | ƒo" Complete |
+| **9/15** | DeliveryTrackingAgent | 1936 | async/await | Optional | N/A | `_track_task('delivery_tracking')` | ƒo" Complete |
+| **10/15** | *HUMAN GATE* | 1999 | **PAUSES** | **MANDATORY** | Returns for GRN confirmation | `_track_task('grn_entry')` | ƒsÿ‹,? **PAUSE** |
+| **11/15** | QualityInspectionAgent | 2039 | async/await | Optional | N/A | `_track_task('quality_inspection')` | ƒo" Complete |
+| **12/15** | InvoiceMatchingAgent | 2078 | async/await | Optional | N/A | `_track_task('invoice_matching')` | ƒo" Complete |
+| **13/15** | InvoiceMatchingAgent (3-way) | 2128 | async/await | Optional | N/A | `_track_task('three_way_match')` | ƒo" Complete |
+| **14/15** | PaymentReadinessAgent | 2174 | async/await | Optional | N/A | `_track_task('payment_readiness')` | ƒo" Complete |
+| **15/15** | PaymentCalculationAgent | 2213 | async/await | Optional | N/A | `_track_task('payment_execution')` | ƒo" Complete |
+
+**Error Handling:**
+
+| **Error Type** | **Handler** | **Line** | **Behavior** |
+|---|---|---|---|
+| Compliance rejection | Explicit if-check | 1553 | **STOPS WORKFLOW** ƒ?" returns status "failed" |
+| Budget shortfall | Explicit if-check | 1598 | **STOPS WORKFLOW** ƒ?" returns available budget to user |
+| Risk CRITICAL | Explicit if-check | 1731 | **STOPS WORKFLOW** ƒ?" blocks until risk mitigated |
+| Agent not registered | Skipped with log warning | 1573, 1708 | **CONTINUES** ƒ?" logged as "skipped", no user impact |
+| Exception in workflow setup | try/except at 1372 | 1372 | **NON-BLOCKING** ƒ?" workflow tracks non-persistently |
+| Exception in task update | try/except at 1430 | 1430 | **NON-BLOCKING** ƒ?" logs debug, continues |
+| PR persistence failure | try/except at 1784 | 1784 | **NON-BLOCKING** ƒ?" PR still marked "created" |
+| PO persistence failure | try/except at 1908 | 1908 | **NON-BLOCKING** ƒ?" PO still marked "created" |
+| Exception service failure | try/except at 2156 | 2156 | **NON-BLOCKING** ƒ?" exception not recorded |
+
+**Synchronously vs Asynchronously Executed:**
+- **Agent invocations**: `await agent.execute()` (lines 1543, 1581, 1645, 1801, 1926, 1974, 2045, 2085, 2136, 2184, 2213)
+- **Event emissions**: `await _emit_selected()` (lines 1542, 1579, 1644, 1795, 1935, etc.)
+- **Workflow engine calls**: Synchronous (inline `create_workflow()`, `complete_task()`, etc.)
+- **Adapter calls**: Synchronous (inline `create_purchase_requisition()`, `create_purchase_order_from_pr()`)
+
+**Critical Flow Issues:**
+
+1. **ƒ?O Early returns (human gates) don't re-inject into workflow engine**
+   - Line 1551, 1678, 2007: When pausing at a human gate, the workflow remains in `workflow_engine` but `_execute_full_p2p()` returns incomplete results
+   - **Risk**: Frontend must call `/p2p/resume` separately; if it doesn't, workflow hangs forever
+
+2. **ƒ?O Risk assessment is non-blocking (line 1743-1745)**
+   - Even if risk agent fails, workflow continues
+   - **Risk**: Missing warnings not visible to user if exception swallows them
+
+3. **ƒsÿ‹,? Adapter write failures are non-blocking**
+   - Lines 1784, 1908, 1922, 1931: PR/PO created but DB write fails silently
+   - **Risk**: Frontend shows "PR created" but database has no record; subsequent lookups fail
+
+4. **ƒsÿ‹,? Multiple task-tracking calls at same step (line 1687)**
+   - `_track_task('vendor_confirmation')` called but task name may not exist in workflow DAG
+   - **Risk**: Task status update fails silently if task name mismatches
+
+5. **ƒ?O Step 4.5 (risk) is out-of-order**
+   - Inserted between vendor_confirmation (step 4) and pr_creation (step 5) but NOT in workflow template
+   - **Risk**: Resume logic won't find "risk_assessment" task in workflow DAG
+
+---
+
+#### **2. `_resume_p2p_workflow()` ƒ?" PAUSED WORKFLOW RESUMPTION (Lines 2283ƒ?"2600)**
+
+**Resume Phases Implemented:**
+
+| **Phase** | **Triggered By** | **Starting Task** | **Runs** | **Stops At** | **Line** | **Status** |
+|---|---|---|---|---|---|---|
+| **post_vendor** | `confirm_vendor` | pr_creation | PR creation, approval routing | approval_wait (human) | 2344 | ƒo" Implemented |
+| **post_approval** | `approve`, `approve_decision` | po_creation | PO creation | po_created_awaiting_delivery | 2470 | ƒo" Implemented |
+| **post_grn** | `confirm_grn` | grn_entry, quality_inspection | GRN confirmation, QC | awaiting_vendor_invoice | 2522 | ƒo" Implemented |
+| **post_qc** | `accept`, `partial_accept` | (skipped) | None (directly to awaiting_vendor_invoice) | awaiting_vendor_invoice | 2330 | ƒsÿ‹,? **STUB** |
+| **post_invoice** | `accept_exception`, `adjust` | (skipped) | Should run 3-way match + payment readiness | payment_readiness | 2332 | ƒ?O **NOT IMPLEMENTED** |
+| **post_payment_release** | `release_payment` | (skipped) | Should execute payment | Complete | 2334 | ƒ?O **NOT IMPLEMENTED** |
+| **auto** | default | (varies) | Remaining tasks via DAG | Depends on workflow state | 2568 | ƒsÿ‹,? **Fallback only** |
+
+**Critical Resume Gaps:**
+
+1. **ƒ?O Phases `post_qc`, `post_invoice`, `post_payment_release` are UNIMPLEMENTED**
+   - Lines 2330ƒ?"2334 define the phases but handler code is missing
+   - **Impact**: Resuming after QC, invoice exception, or payment gate will fall through to `auto` fallback
+   - **Risk**: User approves QC rejection but nothing happens; workflow stays in `post_qc` state forever
+
+2. **ƒ?O `auto` fallback executes remaining tasks sequentially (line 2568)**
+   - Line 2573: Uses `_p2p_task_to_agent_key()` to map task name to agent
+   - **Issue**: This mapping is INCOMPLETE (see Part C below)
+   - **Risk**: If a task name isn't in the mapping, it's skipped silently
+
+3. **ƒsÿ‹,? Status refresh at line 2377 MANDATORY but non-blocking**
+   - After pr_creation task completes, code calls `get_workflow_status()` to find approval_routing task
+   - **Issue**: If workflow_engine DB is slow, stale task list may be used
+   - **Risk**: approval_routing task marked as pending but not executed
+
+4. **ƒsÿ‹,? Exception handling at line 2414 logs warning but continues**
+   - If `approval_routing` agent fails, workflow still marks approval_wait as awaiting_human
+   - **Impact**: User sees "Awaiting approval" but approvers list is empty (no assigned_approvers)
+
+---
+
+#### **3. `_p2p_task_to_agent_key()` ƒ?" TASK-TO-AGENT MAPPING (Lines 2605ƒ?"2619)**
+
+**Mapping Completeness:**
+
+```python
+mapping = {
+    "compliance_check": "compliance_check",           # ƒo" Maps to registered agent
+    "budget_verification": "budget_verification",     # ƒo" Maps to registered agent
+    "vendor_selection": "vendor_selection",           # ƒo" Maps to registered agent
+    "approval_routing": "approval_routing",           # ƒo" Maps to registered agent
+    "delivery_tracking": "delivery_tracking",         # ƒo" Maps to registered agent
+    "quality_inspection": "quality_inspection",       # ƒo" Maps to registered agent
+    "invoice_matching": "invoice_matching",           # ƒo" Maps to registered agent
+    "three_way_match": "invoice_matching",            # ƒo" Maps to same agent
+    "payment_readiness": "payment_readiness",         # ƒo" Maps to registered agent
+    "payment_execution": "payment_calculation",       # ƒo" Maps to registered agent
+}
+```
+
+**ƒ?O MISSING MAPPINGS (from P2P_FULL template):**
+
+| **Task Name** | **Template Line** | **P2P Step** | **Mapping Status** | **Agent Exists?** | **Impact** |
+|---|---|---|---|---|---|
+| `vendor_confirmation` | 105 | 4 | ƒ?O NOT MAPPED | No agent (human gate) | Silently skipped in `auto` phase |
+| `pr_creation` | 106 | 5 | ƒ?O NOT MAPPED | No agent (system task) | Silently skipped in `auto` phase |
+| `approval_wait` | 108 | 7 | ƒ?O NOT MAPPED | No agent (human gate) | Silently skipped in `auto` phase |
+| `po_creation` | 109 | 8 | ƒ?O NOT MAPPED | No agent (system task) | Silently skipped in `auto` phase |
+| `grn_entry` | 111 | 10 | ƒ?O NOT MAPPED | No agent (human gate) | Silently skipped in `auto` phase |
+| `risk_assessment` | (custom) | 4.5 | ƒ?O NOT MAPPED | Agent exists but no mapping | Silently skipped in `auto` phase |
+
+**ƒsÿ‹,? CONSEQUENCES:**
+
+- If a workflow is paused at an unexpected phase and user resumes, the `auto` fallback will skip 6 non-agent tasks
+- **Example**: Workflow paused mid-execution at `vendor_confirmation`, user calls `/p2p/resume`, the fallback will call `_p2p_task_to_agent_key("vendor_confirmation")` ƒ+' returns `None` ƒ+' task skipped
+
+---
+
+### **Orchestrator Summary**
+
+| **Aspect** | **Status** | **Evidence** |
+|---|---|---|
+| Full 15-step P2P execution | ƒo" Functional | All steps wired with agents/tasks |
+| Human gate detection & pause | ƒo" Functional | 3 gates (vendor, approval, GRN) working |
+| Resume from gates | ƒsÿ‹,? Partial | post_vendor & post_approval working; post_qc, post_invoice, post_payment_release unimplemented |
+| Workflow engine integration | ƒo" Mostly | Tasks tracked; some task names missing from agent mapping |
+| Error recovery | ƒsÿ‹,? Weak | Non-blocking failures may hide real errors; no retry mechanism |
+| SSE event streaming | ƒo" Functional | Events emitted at key steps (lines 1494, 1542, 1579, etc.) |
+
+---
+
+## **PART C: WORKFLOW ENGINE INTEGRATION**
+
+### **P2P_FULL Workflow Template**
+
+**File**: `backend/services/workflow_engine.py:99ƒ?"118`
+
+**15 Tasks, 3 Human Gates, 10 Agent Tasks, 2 System Tasks:**
+
+```
+ƒ"Oƒ"? compliance_check (agent) ƒ"?ƒ"?ƒ"?ƒ"?ƒ+' no deps
+ƒ",
+ƒ"oƒ"? budget_verification (agent) ƒ"?ƒ+' depends_on: compliance_check
+ƒ",
+ƒ"oƒ"? vendor_selection (agent) ƒ"?ƒ"?ƒ"?ƒ"?ƒ+' depends_on: budget_verification
+ƒ",
+ƒ"oƒ"? vendor_confirmation (HUMAN) ƒ"?ƒ+' depends_on: vendor_selection [GATE 1]
+ƒ",
+ƒ"oƒ"? pr_creation (system) ƒ"?ƒ"?ƒ"?ƒ"?ƒ"?ƒ"?ƒ"?ƒ"?ƒ+' depends_on: vendor_confirmation
+ƒ",
+ƒ"oƒ"? approval_routing (agent) ƒ"?ƒ"?ƒ"?ƒ"?ƒ+' depends_on: pr_creation
+ƒ",
+ƒ"oƒ"? approval_wait (HUMAN) ƒ"?ƒ"?ƒ"?ƒ"?ƒ"?ƒ"?ƒ"?ƒ+' depends_on: approval_routing [GATE 2]
+ƒ",
+ƒ"oƒ"? po_creation (system) ƒ"?ƒ"?ƒ"?ƒ"?ƒ"?ƒ"?ƒ"?ƒ"?ƒ+' depends_on: approval_wait
+ƒ",
+ƒ"oƒ"? delivery_tracking (agent) ƒ"?ƒ"?ƒ"?ƒ+' depends_on: po_creation
+ƒ",
+ƒ"oƒ"? grn_entry (HUMAN) ƒ"?ƒ"?ƒ"?ƒ"?ƒ"?ƒ"?ƒ"?ƒ"?ƒ"?ƒ"?ƒ+' depends_on: delivery_tracking [GATE 3]
+ƒ",
+ƒ"oƒ"? quality_inspection (agent) ƒ"?ƒ"?ƒ+' depends_on: grn_entry
+ƒ",
+ƒ"oƒ"? invoice_matching (agent) ƒ"?ƒ"?ƒ"?ƒ"?ƒ+' depends_on: quality_inspection
+ƒ",
+ƒ"oƒ"? three_way_match (agent) ƒ"?ƒ"?ƒ"?ƒ"?ƒ"?ƒ+' depends_on: invoice_matching
+ƒ",
+ƒ"oƒ"? payment_readiness (agent) ƒ"?ƒ"?ƒ"?ƒ+' depends_on: three_way_match
+ƒ",
+ƒ""ƒ"? payment_execution (agent) ƒ"?ƒ"?ƒ"?ƒ+' depends_on: payment_readiness
+```
+
+### **Workflow Engine Functions**
+
+#### **1. `create_workflow(workflow_type, trigger_data)` ƒ?" Line 298**
+
+**Behavior**:
+- Creates `workflow_runs` row with status WORKFLOW_RUNNING
+- Creates 15 `workflow_tasks` rows, each with `status='pending'`
+- Tasks are pre-populated with `depends_on` array (FK to previous task IDs)
+- Emits `workflow_created` event to `workflow_events` table
+
+**Persistence**: ƒo" PostgreSQL (synchronous INSERT)
+
+**Issues**:
+- ƒo" No issues detected
+
+---
+
+#### **2. `advance_workflow(workflow_run_id)` ƒ?" Line 372**
+
+**Behavior**:
+- Fetches all tasks for workflow
+- Identifies `completed_ids` (tasks with status='completed')
+- For each PENDING task: checks if all `depends_on` tasks are in `completed_ids`
+- If ready: marks task as RUNNING and returns it
+
+**Persistence**: ƒo" PostgreSQL (task status UPDATE)
+
+**Retry Logic**: ƒ?O NONE
+- Tasks are NOT retried on failure
+- Once marked FAILED, they stay FAILED
+
+**Issues**:
+- Task state transitions are not atomic; no lock prevents concurrent advancement
+- If `advance_workflow()` called twice in parallel, both may mark the same task as RUNNING
+
+---
+
+#### **3. `complete_task(task_id, result_data)` ƒ?" Line 537**
+
+**Behavior**:
+- Marks task as COMPLETED with output_data = result_data
+- **Does NOT auto-call `advance_workflow()`**
+- Caller must call `advance_workflow()` separately to trigger next task
+
+**Persistence**: ƒo" PostgreSQL (task status UPDATE)
+
+**Critical Issue**: ƒ?O **NO AUTO-ADVANCEMENT**
+
+- Example flow:
+  ```
+  1. compliance_check completes ƒ+' complete_task('compliance_check')
+  2. backend_code must call advance_workflow(workflow_run_id)
+  3. advance_workflow() then marks budget_verification as RUNNING
+  4. backend_code must invoke budget_verification agent
+  ```
+
+- **Risk**: If backend code forgets step 2, workflow hangs forever in RUNNING state
+
+- **Evidence**: `orchestrator.py:1371` calls `advance_workflow(workflow_run_id)` explicitly at startup, but NOT after each task completion; relies on orchestrator's sequential execution to advance
+
+---
+
+#### **4. `fail_task(task_id, error_msg)` ƒ?" Line 571**
+
+**Behavior**:
+- Marks task as FAILED
+- Propagates failure to parent workflow (marks workflow FAILED)
+- **Does NOT revert child tasks**
+
+**Persistence**: ƒo" PostgreSQL
+
+**Issues**:
+- ƒ?O If task_B depends on task_A, and task_A fails, task_B is NOT automatically cancelled
+- Manual cleanup required to mark task_B as CANCELLED
+
+---
+
+#### **5. `get_workflow_status(workflow_run_id)` ƒ?" Line 614**
+
+**Behavior**:
+- Fetches workflow_runs row
+- Fetches all workflow_tasks for that workflow
+- Computes: completed_count, running_count, failed_count
+- Infers workflow status (RUNNING, WAITING, FAILED, COMPLETED)
+
+**Issues**:
+- ƒsÿ‹,? Inferred status may be out-of-sync if a task crashes without marking itself FAILED
+- No heartbeat mechanism to detect hung tasks
+
+---
+
+### **Database Persistence & Recovery**
+
+#### **Schema: workflow_runs**
+```sql
+CREATE TABLE workflow_runs (
+    id              SERIAL PRIMARY KEY,
+    workflow_run_id VARCHAR(50) UNIQUE NOT NULL,
+    workflow_type   VARCHAR(50) NOT NULL,
+    trigger_source  VARCHAR(100),
+    trigger_data    JSONB DEFAULT '{}',
+    status          VARCHAR(50) DEFAULT 'pending',
+    current_task_id VARCHAR(50),
+    total_tasks     INTEGER DEFAULT 0,
+    completed_tasks INTEGER DEFAULT 0,
+    failed_tasks    INTEGER DEFAULT 0,
+    pr_number       VARCHAR(50),
+    po_number       VARCHAR(50),
+    invoice_number  VARCHAR(100),
+    started_at      TIMESTAMPTZ DEFAULT NOW(),
+    completed_at    TIMESTAMPTZ,
+    error_message   TEXT,
+    created_by      VARCHAR(200) DEFAULT 'system'
+);
+```
+
+#### **Schema: workflow_tasks**
+```sql
+CREATE TABLE workflow_tasks (
+    id              SERIAL PRIMARY KEY,
+    task_id         VARCHAR(50) UNIQUE NOT NULL,
+    workflow_run_id VARCHAR(50) REFERENCES workflow_runs(workflow_run_id),
+    task_name       VARCHAR(100) NOT NULL,
+    task_type       VARCHAR(50) NOT NULL,      -- 'system', 'agent', 'human'
+    agent_name      VARCHAR(100),
+    status          VARCHAR(50) DEFAULT 'pending',
+    depends_on      VARCHAR(50)[],             -- Array of task IDs
+    wait_type       VARCHAR(50),               -- For human tasks: 'approval', 'vendor_selection', 'goods_receipt'
+    input_data      JSONB DEFAULT '{}',
+    output_data     JSONB DEFAULT '{}',
+    started_at      TIMESTAMPTZ,
+    completed_at    TIMESTAMPTZ
+);
+```
+
+#### **Server Restart Recovery: ƒo" YES**
+
+- ƒo" On backend restart, workflows remain in `workflow_runs` with status reflecting last known state
+- ƒo" Frontend can call `GET /api/p2p/journey/{workflow_run_id}` to fetch workflow state
+- ƒo" Frontend can call `POST /api/agentic/p2p/resume` to resume from last completion point
+- ƒsÿ‹,? BUT: In-flight tasks (status='running') are NOT marked as failed; they remain RUNNING indefinitely
+  - **Risk**: If task crashes mid-execution and backend restarts, that task looks like it's still running
+  - **Workaround**: Frontend must have a timeout and call fail_task() if resume doesn't respond
+
+#### **Workflow "Rewind": ƒ?O NOT POSSIBLE**
+
+- Once a task is marked COMPLETED, there's no way to uncomplete it
+- No branch/alternative-path execution
+- **If a step fails partway through, entire workflow must be abandoned and restarted**
+
+---
+
+### **Workflow Engine Summary**
+
+| **Capability** | **Status** | **Notes** |
+|---|---|---|
+| Create workflow | ƒo" | All 15 tasks initialized |
+| Persist workflow state | ƒo" | PostgreSQL, survives restart |
+| Task sequencing (DAG) | ƒo" | depends_on enforced |
+| Human gate pause | ƒo" | Task marked 'waiting_human' |
+| Human gate resume | ƒsÿ‹,? | Must call resume endpoint separately |
+| Automatic task advancement | ƒ?O | `complete_task()` does NOT auto-call `advance_workflow()` |
+| Error recovery | ƒ?O | No retry, no backoff, no rewind |
+| Timeout detection | ƒ?O | No heartbeat, hung tasks stay RUNNING forever |
+| Audit trail | ƒo" | Events logged to `workflow_events` table |
+
+---
+
+## **PART D: ADAPTER LAYER GAPS**
+
+### **Adapter Method Coverage Matrix**
+
+**7 Adapters A- ~50 Methods = 350 potential implementations**
+
+**Implemented Methods (verified via grep):**
+
+| **Method** | **Base** | **Oracle** | **SAP** | **Dynamics** | **ERPNext** | **Odoo** | **PostgreSQL** | **Status** |
+|---|---|---|---|---|---|---|---|---|
+| **get_vendors** | ƒo" | ƒo" | ƒo" | ƒo" | ƒo" | ƒo" | ƒo" | All |
+| **get_purchase_orders** | ƒo" | ƒo" | ƒo" | ƒo" | ƒo" | ƒo" | ƒo" | All |
+| **get_grn_headers** | ƒo" | ƒo" | ƒo" | ƒo" | ƒo" | ƒo" | ƒo" | All |
+| **get_vendor_invoices** | ƒo" | ƒo" | ƒo" | ƒo" | ƒo" | ƒo" | ƒo" | All |
+| **get_contracts** | ƒo" | ƒo" | ƒo" | ƒo" | ƒo" | ƒo" | ƒo" | All |
+| **get_budget_vs_actuals** | ƒo" | ƒo" | ƒo" | ƒo" | ƒo" | ƒo" | ƒo" | All |
+| **get_purchase_requisitions** | ƒo" | ƒo" | ƒo" | ƒo" | ƒo" | ƒo" | ƒo" | All |
+| **create_purchase_requisition** | ƒo- | ƒo- | ƒo- | ƒo- | ƒo- | ƒo- | ƒo" | **PostgreSQL ONLY** |
+| **create_purchase_order_from_pr** | ƒo- | ƒo- | ƒo- | ƒo- | ƒo- | ƒo- | ƒo" | **PostgreSQL ONLY** |
+| **create_pending_approval** | ƒo- | ƒo- | ƒo- | ƒo- | ƒo- | ƒo- | ƒo" | **PostgreSQL ONLY** |
+| **create_approval_workflow** | ƒo- | ƒo- | ƒo- | ƒo- | ƒo- | ƒo- | ƒo" | **PostgreSQL ONLY** |
+| **create_approval_step** | ƒo- | ƒo- | ƒo- | ƒo- | ƒo- | ƒo- | ƒo" | **PostgreSQL ONLY** |
+| **create_payment_run** | ƒo- | ƒo- | ƒo- | ƒo- | ƒo- | ƒo- | ƒo" | **PostgreSQL ONLY** |
+| **update_approval_status** | ƒo- | ƒo- | ƒo- | ƒo- | ƒo- | ƒo- | ƒo" | **PostgreSQL ONLY** |
+
+### **ƒ?O CRITICAL: CREATE/WRITE METHODS ARE POSTGRESQL-ONLY**
+
+**Affected Calls in Orchestrator:**
+
+| **Method** | **Called At** | **Adapter Used** | **Fallback** |
+|---|---|---|---|
+| `create_purchase_requisition()` | orchestrator.py:1773 | get_adapter() | Delegates to PostgreSQL |
+| `create_purchase_requisition()` | orchestrator.py:2354 | get_adapter() | Delegates to PostgreSQL |
+| `create_purchase_order_from_pr()` | orchestrator.py:1895 | po_adapter | Delegates to PostgreSQL |
+| `create_purchase_order_from_pr()` | orchestrator.py:2479 | adapter | Delegates to PostgreSQL |
+| `create_pending_approval()` | payment_approval_agent.py:330 | _adapter() | Delegates to PostgreSQL |
+| `create_approval_workflow()` | approval_routing.py:382 | adapter | Delegates to PostgreSQL |
+| `create_approval_step()` | approval_routing.py:399 | adapter | Delegates to PostgreSQL |
+| `create_payment_run()` | payment_calculation_agent.py:437 | _adapter() | Delegates to PostgreSQL |
+
+**ƒsÿ‹,? CONSEQUENCE:**
+
+- If `DATA_SOURCE=odoo` (Odoo is primary ERP), creating a PR still writes to PostgreSQL
+- PR is created in BOTH Odoo (via API if implemented) AND PostgreSQL (always)
+- **Risk**: Dual-master data inconsistency if Odoo API fails but PostgreSQL succeeds
+
+### **Adapter Factory Pattern**
+
+**File**: `backend/services/adapters/factory.py`
+
+**Logic**:
+```python
+def get_adapter():
+    data_source = os.getenv('DATA_SOURCE', 'postgresql')
+    
+    if data_source == 'odoo':
+        return OdooAdapter()
+    elif data_source == 'sap':
+        return SAPAdapter()
+    # ... etc
+    else:
+        return PostgreSQLAdapter()
+```
+
+**Issue**: 
+- All adapters inherit from `IDataSourceAdapter`
+- `create_purchase_requisition()` defined in base class but **only PostgreSQL implements it**
+- Calling `odoo_adapter.create_purchase_requisition()` will SILENTLY delegate to PostgreSQL (via `self._pg()`)
+- **No error raised if Odoo adapter is missing the method**
+
+### **Hardcoded SQL in Agents**
+
+**Detected Instances:**
+
+1. **inventory_check.py:266**
+   ```python
+   db_result = adapter.create_purchase_requisition({...})
+   ```
+   - Calls adapter method (good pattern)
+
+2. **payment_calculation_agent.py:437**
+   ```python
+   payment_run_rec = _adapter().create_payment_run({...})
+   ```
+   - Calls adapter method (good pattern)
+
+3. **reconciliation.py (entire module)**
+   - Uses direct SQL for statement import
+   - **No adapter abstraction**
+   - Direct psycopg2 connection at line 31
+
+---
+
+## **PART E: DATABASE SCHEMA FOR P2P ENTITIES**
+
+### **Core P2P Tables**
+
+#### **Vendor & Master Data**
+
+| **Table** | **ERP-Specific?** | **Created In** | **PK** | **Status** |
+|---|---|---|---|---|
+| **vendors_odoo, vendors_sap_s4, ...** | ƒo" 6 copies | sprint5_erp_tables.py | id | ƒo" Exists |
+| **items_odoo, items_sap_s4, ...** | ƒo" 6 copies | sprint5_erp_tables.py | id | ƒo" Exists |
+| **cost_centers** | ƒo- Generic | (not found) | ? | ƒ?O Missing |
+| **exchange_rates** | ƒo- Generic | sprint8_fx_rates_seed.py | id | ƒo" Exists |
+
+#### **Purchase Requisition Pipeline**
+
+| **Table** | **Schema** | **Foreign Keys** | **Status** |
+|---|---|---|---|
+| **purchase_requisitions** | PostgreSQL only | None tracked | ƒsÿ‹,? System table, not ERP-synced |
+| **pr_approval_workflows** | pr_number ƒ+' PK | None | ƒsÿ‹,? No FK to purchase_requisitions.pr_number |
+| **pr_approval_steps** | approval_id, approver_email | ƒ?O NO FK to approval_workflows | ƒsÿ‹,? Orphan risk |
+
+#### **Purchase Order Pipeline**
+
+| **Table** | **Foreign Keys** | **Traceability** | **Status** |
+|---|---|---|---|
+| **po_headers_odoo, ...** (6 copies) | None tracked | ƒ?O No pr_number field | ƒsÿ‹,? PO not linked to originating PR |
+| **po_lines_odoo, ...** (6 copies) | ƒ?O No FK to po_headers | ƒ?O Manual string matching only | ƒ?O Data integrity risk |
+
+#### **Goods Receipt & Delivery**
+
+| **Table** | **Foreign Keys** | **Traceability** | **Status** |
+|---|---|---|---|
+| **grn_headers_odoo, ...** (6 copies) | origin field (string, not FK) | ƒ?O String-based PO lookup | ƒsÿ‹,? No referential integrity |
+| **grn_lines_odoo, ...** | ƒ?O No FK to grn_headers | Manual string match | ƒ?O No DB-level integrity |
+
+#### **Invoice & Payment**
+
+| **Table** | **Foreign Keys** | **P2P Traceability** | **Status** |
+|---|---|---|---|
+| **invoices_odoo, ...** (6 copies) | invoice_origin (string, not FK) | ƒ?O String-based PO/GRN lookup | ƒsÿ‹,? Weak traceability |
+| **payment_runs** | ƒ?O NO invoice_id FK | Manual matching only | ƒsÿ‹,? Reconciliation fragile |
+| **ap_aging** | vendor_id (string) | ƒ?O No PO/invoice link | ƒsÿ‹,? Reporting incomplete |
+
+#### **Approval & Workflow**
+
+| **Table** | **Foreign Keys** | **Referential Integrity** | **Status** |
+|---|---|---|---|
+| **pending_approvals** | pr_number (string) | ƒ?O No FK | ƒsÿ‹,? Orphan risk |
+| **pr_approval_workflows** | pr_number (string) | ƒ?O No FK | ƒsÿ‹,? Orphan risk |
+| **workflow_runs** | None | ƒ?O No FK | ƒsÿ‹,? Orphan risk |
+| **workflow_tasks** | workflow_run_id (FK) | ƒo" FK exists | ƒo" Good |
+
+### **Schema Gaps & Missing Foreign Keys**
+
+#### **ƒ?O CRITICAL: NO P2P TRACEABILITY FOREIGN KEYS**
+
+**Gap 1: PR ƒ+' PO Link**
+```sql
+-- MISSING:
+ALTER TABLE po_headers_odoo ADD COLUMN pr_number VARCHAR(50);
+ALTER TABLE po_headers_odoo ADD FOREIGN KEY (pr_number) REFERENCES purchase_requisitions(pr_number);
+```
+**Impact**: PO table has no way to trace back to originating PR
+
+**Gap 2: PO ƒ+' GRN Link**
+```sql
+-- MISSING:
+ALTER TABLE grn_headers_odoo ADD COLUMN po_number_fk VARCHAR(50);
+ALTER TABLE grn_headers_odoo ADD FOREIGN KEY (po_number_fk) REFERENCES po_headers_odoo(name);
+```
+**Current State**: grn_headers.origin is a VARCHAR(100) with value like "PO-123", not a FK
+**Impact**: No DB-level referential integrity; manual string-matching required
+
+**Gap 3: GRN ƒ+' Invoice Link**
+```sql
+-- MISSING:
+ALTER TABLE invoices_odoo ADD COLUMN grn_number_fk VARCHAR(50);
+ALTER TABLE invoices_odoo ADD FOREIGN KEY (grn_number_fk) REFERENCES grn_headers_odoo(name);
+```
+**Current State**: invoices_odoo.invoice_origin is a string, not a FK
+**Impact**: 3-way match (PO ƒ+" GRN ƒ+" Invoice) requires string parsing and manual joins
+
+**Gap 4: Invoice ƒ+' Payment Link**
+```sql
+-- MISSING:
+ALTER TABLE payment_runs ADD COLUMN invoice_id_fk INT;
+ALTER TABLE payment_runs ADD FOREIGN KEY (invoice_id_fk) REFERENCES invoices_odoo(id);
+```
+**Current State**: No payment_runs.invoice_id field
+**Impact**: Payment reconciliation is manual; no DB-level traceability from payment back to invoice
+
+#### **ƒsÿ‹,? STATUS COLUMN FRAGMENTATION**
+
+**Problem**: No single source of truth for workflow status
+
+| **Status Field** | **Table** | **Values** | **Authoritative?** |
+|---|---|---|---|
+| **workflow_runs.status** | workflow_engine | pending, running, waiting_human, completed, failed | ƒo" Yes for orchestrator |
+| **workflow_tasks.status** | workflow_engine | pending, running, waiting_human, completed, failed | ƒo" Yes for individual tasks |
+| **po_headers_odoo.state** | ERP data | draft, sent, purchase, done, cancel | ƒo" Yes for ERP POs |
+| **pending_approvals.status** | PostgreSQL | pending, approved, rejected | ƒo" Yes for approval worklist |
+| **pr_approval_workflows.status** | PostgreSQL | pending, routed, approved | ƒsÿ‹,? May conflict with pending_approvals.status |
+| **invoices_odoo.state** | ERP data | draft, posted, cancel | ƒo" Yes for ERP invoices |
+| **invoices_odoo.payment_state** | ERP data | not_paid, in_payment, paid | ƒo" Yes for payment status |
+| **payment_runs.status** | PostgreSQL | proposed, authorized, executed | (custom, varies by agent) |
+
+**Risk**: Different agents update different status fields; no guarantee they stay in sync
+- Example: invoice marked paid in payment_runs but still shows "not_paid" in invoices_odoo
+
+---
+
+## **PART F: ERROR HANDLING, LOGGING, RETRY**
+
+### **Error Handling in Orchestrator Steps**
+
+| **Step** | **Error Scenario** | **Handler** | **Behavior** | **Line** | **Risk** |
+|---|---|---|---|---|---|
+| Compliance check | Agent returns "reject" | Explicit if-check | **STOPS workflow** | 1553 | ƒo" Safe |
+| Budget verification | Agent returns "reject" | Explicit if-check | **STOPS workflow** | 1598 | ƒo" Safe |
+| Risk assessment | Agent fails (exception) | try/except | Logs warning, **CONTINUES** | 1743 | ƒ?O May hide real error |
+| PR creation | Adapter.create_purchase_requisition() fails | try/except | Logs warning, **MARKS PR CREATED** | 1784 | ƒ?O PR created in response but not in DB |
+| Approval routing | Agent returns empty assigned_approvers | No check | **SETS empty approver list** | 1815 | ƒ?O User sees "Awaiting approval" with no one to approve |
+| PO creation | Adapter.create_purchase_order_from_pr() fails | try/except | Logs warning, **MARKS PO CREATED** | 1908 | ƒ?O PO created in response but not in DB |
+| GRN ƒ+' Quality | Agent fails | try/except | Logs warning, **CONTINUES** | 2049 | ƒ?O Quality skipped silently |
+| Invoice matching | Agent fails | try/except | Logs warning, **CONTINUES** | 2085 | ƒ?O Matching skipped silently |
+| Payment | Agent fails | try/except | Logs warning, **CONTINUES** | 2213 | ƒ?O Payment skipped silently |
+
+### **Logging Patterns**
+
+**Detected Issues:**
+
+1. **ƒ?O Mixed log levels obscure severity**
+   - `logger.warning()` used for non-blocking failures that should be `logger.error()`
+   - Example: orchestrator.py:1785 "PR persistence failed (non-blocking)"
+   - **Risk**: Operator may not notice critical DB failure in WARN logs
+
+2. **ƒsÿ‹,? Agent registration failures are warnings, not errors**
+   - orchestrator.py:79 `logger.warning()` when agent not registered
+   - **Risk**: If compliance_check agent fails to register, it's silently skipped with just a warning
+
+3. **ƒ?O Connection pool errors from backend/services/db_pool.py**
+   - main.py:252ƒ?"256: "DB POOL FAILED" can be logged during startup
+   - **Risk**: If pool fails, server won't start, but exceptions may be buried in logs
+
+### **Retry Mechanism**
+
+**Current Status**: ƒ?O **NO RETRY LOGIC**
+
+**Affected Operations:**
+
+| **Operation** | **Failure Mode** | **Retry?** | **Impact** |
+|---|---|---|---|
+| Agent execution | LLM timeout, network error | ƒ?O No | Workflow fails completely |
+| Adapter call (create_purchase_requisition) | DB connection loss | ƒ?O No | PR marked "created" but not persisted |
+| Adapter call (get_contracts) | Network timeout to ERP | ƒ?O No | Empty contracts list, missing discount terms |
+| Workflow engine (task advancement) | DB lock timeout | ƒ?O No | Workflow hangs at pending task |
+
+**Global Timeout Middleware**: main.py:57ƒ?"90
+- Sets 30-second timeout on all HTTP requests (skips SSE streaming endpoints)
+- **Risk**: Agent invocation times out at 30s even if agent is logically mid-execution
+
+### **Dead-Letter Queue for Failed Workflows**
+
+**Status**: ƒ?O **NONE**
+
+- Failed workflows are marked FAILED in workflow_engine.status but never archived
+- No separate "dead letter" table or alert mechanism
+- **Risk**: Users don't know their workflow failed unless they check the dashboard
+
+### **Error Surfacing to User**
+
+**Mechanisms:**
+
+| **Channel** | **Where** | **Status** | **Example** |
+|---|---|---|---|
+| **Response JSON** | synchronous endpoint | ƒo" Used | `{"status": "failed", "error": "Budget exceeded"}` |
+| **SSE event** | streaming endpoint | ƒo" Used | `AgentEventType.ERROR` event emitted |
+| **HTTP status code** | 500 on exception | ƒo" Used | Unhandled exceptions return 500 |
+| **Response field** | human_action_required | ƒo" Used | Human gate returns gate metadata |
+| **Workflow status** | `/api/p2p/journey/{workflow_run_id}` | ƒo" Used | Status shows "awaiting_vendor_confirmation" |
+
+**Issue**: Non-blocking errors (PR/PO persistence failures) are NOT surfaced to user
+- Example: orchestrator.py:1784 ƒ?" if `adapter.create_purchase_requisition()` fails, response still shows `"status": "completed"` but data is missing from DB
+- **Risk**: User thinks PR was created; nothing in UI warns them of DB error
+
+---
+
+## **PART G: SSE STREAMING & HUMAN GATES**
+
+### **SSE Endpoint**
+
+**Location**: `routes/agentic.py:1345` POST `/api/agentic/execute/stream`
+
+**Event Types Emitted**:
+
+| **Event** | **Emitted At** | **Payload Example** | **Status** |
+|---|---|---|---|
+| `RECEIVED` | Line 1368 | `{"request": "...", "request_id": "UUID"}` | ƒo" |
+| `CLASSIFYING` | Line 1386 | `{"message": "Orchestrator analyzing..."}` | ƒo" |
+| `ROUTING` | Line 1423 | `{"message": "...", "intent_count": 2}` | ƒo" |
+| `AGENT_SELECTED` | orchestrator.py:1494 | `{"agent": "VendorSelectionAgent", "confidence": 0.95}` | ƒo" |
+| `ACTING` | (agents emit via event_stream) | Agent-specific | ƒo" |
+| `COMPLETE` | Line 1860 | Final aggregated result | ƒo" |
+| `ERROR` | (on exception) | `{"error": "...", "traceback": "..."}` | ƒo" |
+
+### **Human Gate Shape**
+
+**Structure Returned**:
+
+```python
+{
+    "type": "vendor_selection" | "approval" | "goods_receipt",
+    "message": "Please review vendor shortlist and confirm...",
+    "options": ["Vendor A", "Vendor B", "Vendor C"],
+    "pr_number": "PR-2026-001",
+    "amount": 50000.00,
+    "approver": {
+        "name": "Jane Manager",
+        "email": "jane@company.com",
+        "role": "Department Manager",
+        "level": 1
+    }
+}
+```
+
+**Inconsistencies**:
+
+| **Gate Type** | **Type Value** | **Options** | **Approver Field** | **Status** |
+|---|---|---|---|---|
+| Vendor selection | "vendor_selection" | Vendor names | No | ƒsÿ‹,? Inconsistent |
+| Approval | "approval" | ["approve", "reject"] | ƒo" Yes | ƒo" Consistent |
+| GRN | "goods_receipt" | (N/A) | No | ƒsÿ‹,? Inconsistent |
+
+**Risk**: Frontend must handle 3 different gate shapes; code duplication likely
+
+### **SSE Stream Lifecycle**
+
+**Flow**:
+1. Client POST `/api/agentic/execute/stream`
+2. Server creates EventStream object
+3. Server emits RECEIVED, CLASSIFYING, ROUTING events (immediate)
+4. Server invokes agents (blocking async/await)
+5. Each agent may emit events via event_stream
+6. Server emits final COMPLETE or ERROR
+7. Stream closes
+
+**Issue**: ƒ?O **STREAM DOESN'T PAUSE AT HUMAN GATES**
+
+- When workflow reaches human_action_required, orchestrator returns P2P response with gate metadata
+- Event stream emits COMPLETE event with full gate in payload
+- Stream closes
+- **Frontend must re-open new SSE stream to `/p2p/resume` to continue**
+
+**Risk**: If frontend crashes between gate and resume, workflow hangs in database forever
+
+### **Gate Reconnection**
+
+**No built-in reconnection mechanism**:
+- Once stream closes at gate, client loses connection ID
+- Must call `/api/agentic/p2p/resume` endpoint separately
+- No way to re-subscribe to existing workflow's event stream
+
+**Workaround**: Polling `/api/p2p/journey/{workflow_run_id}` to check status
+
+---
+
+## **PART H: TOP 10 MOST CRITICAL BACKEND ARCHITECTURAL PROBLEMS**
+
+### **1. ƒ?O CRITICAL: Missing P2P Foreign Keys Break Data Integrity**
+
+**Issue**: Purchase Order has no FK to Purchase Requisition; GRN has no FK to PO; Invoice has no FK to GRN
+
+**Files**: 
+- po_headers_odoo: migration sprint5_erp_tables.py:74ƒ?"93
+- grn_headers_odoo: migration sprint5_erp_tables.py:115ƒ?"129
+- invoices_odoo: migration sprint5_erp_tables.py:131ƒ?"150
+
+**Impact**: 3-way match logic (PO ƒ+" GRN ƒ+" Invoice) requires string parsing; data can be orphaned; reconciliation is fragile
+
+**Risk Level**: **CRITICAL** ƒ?" Silent data loss in discrepancy_resolution_agent.py, payment_calculation_agent.py
+
+**Fix**: Add FK constraints in migration:
+```sql
+ALTER TABLE po_headers_odoo ADD COLUMN pr_number VARCHAR(50);
+ALTER TABLE po_headers_odoo ADD FOREIGN KEY (pr_number) REFERENCES purchase_requisitions(pr_number);
+ALTER TABLE grn_headers_odoo ADD COLUMN po_number_fk VARCHAR(50);
+ALTER TABLE grn_headers_odoo ADD FOREIGN KEY (po_number_fk) REFERENCES po_headers_odoo(name);
+```
+
+---
+
+### **2. ƒ?O CRITICAL: PR/PO Persistence Failures Silently Succeed**
+
+**Issue**: When `adapter.create_purchase_requisition()` fails (DB connection lost), exception is caught and logged as warning, but response still shows `"status": "completed"` with PR number
+
+**Files**: 
+- orchestrator.py:1770ƒ?"1787 (PR creation)
+- orchestrator.py:1892ƒ?"1931 (PO creation)
+- routes/agentic.py:3065 (PO creation in gap features)
+
+**Impact**: Frontend displays "PR created: PR-2026-123456" but database has no such record; subsequent lookups fail; accounting reports are incorrect
+
+**Risk Level**: **CRITICAL** ƒ?" Data loss and reconciliation errors
+
+**Fix**: Don't mark step as "completed" if DB write fails; return error status instead
+
+```python
+try:
+    _adapter.create_purchase_requisition({...})
+except Exception as err:
+    logger.error("PR creation failed: %s", err)
+    return {"status": "error", "error": str(err)}
+```
+
+---
+
+### **3. ƒ?O CRITICAL: Unimplemented Resume Phases (post_qc, post_invoice, post_payment_release)**
+
+**Issue**: Orchestrator defines 6 resume phases, but only 2 have implementation code; 3 missing phases fall through to `auto` fallback which uses incomplete task-to-agent mapping
+
+**Files**: 
+- orchestrator.py:2283ƒ?"2600 (_resume_p2p_workflow)
+- Lines 2330ƒ?"2334 define phases but no handler code
+
+**Impact**: If workflow paused after QC rejection (post_qc phase), calling resume does nothing; workflow stays stuck
+
+**Risk Level**: **CRITICAL** ƒ?" Workflows cannot resume from 50% of possible pause points
+
+**Fix**: Implement post_qc, post_invoice, post_payment_release phases with proper task execution and status updates
+
+---
+
+### **4. ƒ?O CRITICAL: Task-to-Agent Mapping Incomplete**
+
+**Issue**: `_p2p_task_to_agent_key()` maps only 10 of 15 workflow tasks; missing: vendor_confirmation, pr_creation, approval_wait, po_creation, grn_entry, risk_assessment
+
+**Files**: 
+- orchestrator.py:2605ƒ?"2619 (_p2p_task_to_agent_key)
+
+**Impact**: If workflow paused unexpectedly and auto-fallback triggered, 6 tasks are skipped silently
+
+**Risk Level**: **HIGH** ƒ?" Workflows may skip critical steps without error
+
+**Fix**: Complete the mapping dict:
+```python
+mapping = {
+    "compliance_check": "compliance_check",
+    ...
+    "vendor_confirmation": None,  # human gate
+    "pr_creation": None,  # system task
+    "approval_wait": None,  # human gate
+    "po_creation": None,  # system task
+    "grn_entry": None,  # human gate
+    "risk_assessment": "risk_assessment",  # MISSING
+}
+```
+
+---
+
+### **5. ƒ?O CRITICAL: No Retry Mechanism for Transient Failures**
+
+**Issue**: Agent timeouts, ERP API failures, DB locks have no retry logic; workflow fails immediately
+
+**Files**: 
+- orchestrator.py: All agent calls (await agent.execute()) at lines 1543, 1581, 1645, 1801, etc.
+- No exponential backoff, no max_retries parameter
+
+**Impact**: Temporary network blips or ERP slowness cause workflows to fail; users must retry manually
+
+**Risk Level**: **HIGH** ƒ?" Production workflows fail unnecessarily; support burden
+
+**Fix**: Wrap agent calls in retry decorator:
+```python
+@retry(max_attempts=3, backoff_factor=2, timeout=60)
+async def invoke_agent(agent, context):
+    return await agent.execute(context)
+```
+
+---
+
+### **6. ƒ?O HIGH: Complete_task() Does NOT Auto-Advance Workflow**
+
+**Issue**: After a task completes, orchestrator must explicitly call `advance_workflow()` to mark next task as running; no automatic DAG traversal
+
+**Files**: 
+- workflow_engine.py:537 (complete_task implementation)
+- orchestrator.py:1343 uses single-threaded execution, so not exposed; but _resume_p2p_workflow:2407 calls complete_task() then get_workflow_status() assuming auto-advance
+
+**Impact**: If workflow engine is called from multiple sources, task advancement may be missed; workflow hangs
+
+**Risk Level**: **HIGH** ƒ?" Fragile integration; hidden dependency on single-threaded execution
+
+**Fix**: Have complete_task() call advance_workflow() automatically:
+```python
+def complete_task(task_id, result_data):
+    # ... mark task COMPLETED ...
+    advance_workflow(workflow_run_id)  # Auto-advance
+```
+
+---
+
+### **7. ƒsÿ‹,? HIGH: Duplicate PR Creation Logic in 3 Places**
+
+**Issue**: PR creation happens in:
+1. `orchestrator._execute_full_p2p()` line 1751
+2. `orchestrator._resume_p2p_workflow()` line 2348
+3. `agents/inventory_check.py` line 266
+
+**Impact**: Bug fixes or logic changes must be made in 3 places; inconsistent PR number generation
+
+**Risk Level**: **HIGH** ƒ?" Code duplication, maintenance burden, inconsistency
+
+**Fix**: Extract to a shared function:
+```python
+async def create_pr(pr_data: dict) -> str:
+    pr_number = f"PR-2026-{datetime.now().strftime('%m%d%H%M%S')}"
+    adapter.create_purchase_requisition({...})
+    return pr_number
+```
+
+---
+
+### **8. ƒsÿ‹,? HIGH: RTV (Returns) Endpoint Duplication**
+
+**Issue**: Two separate implementations:
+- `routes/rtv.py`: Complete RTV workflow
+- `routes/gap_features.py`: Return creation (overlapping functionality)
+
+**Impact**: Unclear which endpoint to use; data may be created in both tables; inconsistent status tracking
+
+**Risk Level**: **HIGH** ƒ?" Confusion, potential data duplication
+
+**Fix**: Consolidate to single endpoint in rtv.py; remove duplicate from gap_features.py
+
+---
+
+### **9. ƒsÿ‹,? HIGH: All ERP Adapters Missing Create Methods (Except PostgreSQL)**
+
+**Issue**: create_purchase_requisition(), create_purchase_order_from_pr(), create_pending_approval() are implemented ONLY in PostgreSQL adapter; calling them on OdooAdapter (when DATA_SOURCE=odoo) silently delegates to PostgreSQL
+
+**Files**: 
+- base_adapter.py:131, 201 (defines interface but no implementation)
+- Only postgresql_adapter.py has implementations
+- OdooAdapter, SAPAdapter, etc. inherit from base and get default behavior (self._pg())
+
+**Impact**: Dual-master writes (Odoo API + PostgreSQL); data sync issues; no error if Odoo API is missing
+
+**Risk Level**: **HIGH** ƒ?" Silent data consistency loss when using non-PostgreSQL ERP
+
+**Fix**: Either:
+1. Implement all create methods in all adapters (preferred), OR
+2. Raise NotImplementedError in base class to fail loudly
+
+```python
+def create_purchase_requisition(self, data: dict) -> dict:
+    raise NotImplementedError(f"{self.__class__.__name__} does not implement create_purchase_requisition")
+```
+
+---
+
+### **10. ƒsÿ‹,? HIGH: No Dead-Letter Queue for Failed Workflows**
+
+**Issue**: Workflows that fail (status='failed' in workflow_runs) are never archived or alerted; users must manually poll `/api/p2p/journey/{workflow_run_id}` to discover failure
+
+**Files**: 
+- workflow_engine.py: No DLQ mechanism
+- Services: No alerting on workflow failure
+
+**Impact**: Failed workflows go unnoticed; no SLA enforcement; support response time increases
+
+**Risk Level**: **HIGH** ƒ?" Production blindness for failed procurements
+
+**Fix**: Implement DLQ table + alert mechanism:
+```python
+def fail_workflow(workflow_run_id, error_msg):
+    # ... mark workflow FAILED ...
+    insert_to_dlq(workflow_run_id, error_msg)
+    send_alert(f"Workflow {workflow_run_id} failed: {error_msg}")
+```
+
+---
+
+## **PART I: ADDITIONAL CRITICAL GAPS (11ƒ?"20)**
+
+### **11. ƒsÿ‹,? MEDIUM: No Approval Chain Enforcement**
+
+**Issue**: approval_routing agent routes to approver list, but no enforcement that approvers actually approve in order
+
+**Files**: 
+- approval_routing.py: Sets assigned_approvers list but no lock-stepping mechanism
+- pending_approvals table has status field but no sequence tracking
+
+**Risk Level**: **MEDIUM** ƒ?" Approval chain can be bypassed if approvers are skipped
+
+---
+
+### **12. ƒsÿ‹,? MEDIUM: Risk Assessment (step 4.5) Out of Sync with Workflow DAG**
+
+**Issue**: Risk assessment runs between vendor_confirmation and pr_creation in orchestrator, but NOT in workflow template
+
+**Files**: 
+- orchestrator.py:1712ƒ?"1747 (runs step 4.5)
+- workflow_engine.py:99ƒ?"118 (no risk_assessment task)
+
+**Risk Level**: **MEDIUM** ƒ?" Workflow state may show wrong current_step if resume happens during risk assessment
+
+---
+
+### **13. ƒsÿ‹,? MEDIUM: Status Fragmentation Across Multiple Tables**
+
+**Issue**: Workflow status exists in workflow_runs, workflow_tasks, po_headers_odoo, invoices_odoo, payment_runs, pending_approvals ƒ?" no single source of truth
+
+**Files**: 
+- Multiple tables, no sync mechanism
+
+**Risk Level**: **MEDIUM** ƒ?" Reporting and auditing unreliable; user sees different status in different views
+
+---
+
+### **14. ƒsÿ‹,? MEDIUM: No Timeout Detection for Hung Workflows**
+
+**Issue**: Task marked status='running' but never completes; no heartbeat mechanism to detect hung tasks
+
+**Files**: 
+- workflow_engine.py: get_workflow_status() infers status but doesn't detect hung tasks
+
+**Risk Level**: **MEDIUM** ƒ?" Workflow can appear running forever; manual intervention required
+
+---
+
+### **15. ƒsÿ‹,? MEDIUM: Approval Gate Message Missing Approver Email**
+
+**Issue**: Human gate at approval_wait includes approver_email, but GRN gate includes no approver info (no GRN receiver role defined)
+
+**Files**: 
+- orchestrator.py:1864 (approval gate, includes email)
+- orchestrator.py:1999 (GRN gate, no approver info)
+
+**Risk Level**: **MEDIUM** ƒ?" Frontend can't notify GRN receiver via email; UX inconsistency
+
+---
+
+### **16. ƒsÿ‹,? MEDIUM: PR Number Generation Uses Seconds, Not UUID**
+
+**Issue**: PR number format: `PR-2026-{MMDDHHMSS}` ƒ?" only 2-second granularity; high-frequency requests may generate duplicate PR numbers
+
+**Files**: 
+- orchestrator.py:1751 (line 1751, 2348)
+- tools.py: Similar pattern
+
+**Risk Level**: **MEDIUM** ƒ?" Database unique constraint may fail under load; no error handling for duplicate PR
+
+**Fix**: Use UUID or sequence:
+```python
+pr_number = f"PR-{uuid.uuid4().hex[:8]}"  # guaranteed unique
+```
+
+---
+
+### **17. ƒ?O HIGH: Connection Pool Not Initialized in Some Code Paths**
+
+**Issue**: main.py:251 initializes pool on startup, but agents may call database before pool is ready (race condition)
+
+**Files**: 
+- main.py:227ƒ?"272 (startup event)
+- agents: May call adapter before pool initialized
+
+**Risk Level**: **HIGH** ƒ?" Occasional "Connection pool not initialized" errors under race conditions
+
+---
+
+### **18. ƒsÿ‹,? MEDIUM: SSE Stream Closes on Human Gate, No Reconnect Mechanism**
+
+**Issue**: At human gate, orchestrator returns final response and stream closes; frontend must open new stream for resume
+
+**Files**: 
+- routes/agentic.py:1345ƒ?"1866 (execute_agentic_request_stream)
+
+**Risk Level**: **MEDIUM** ƒ?" UX friction; client must re-connect; connection IDs not persisted
+
+---
+
+### **19. ƒsÿ‹,? MEDIUM: Exception Service Not Integrated into P2P Flow**
+
+**Issue**: exception_resolution_service.py exists but not called from orchestrator; exceptions must be created manually by frontend
+
+**Files**: 
+- services/exception_resolution_service.py: Methods exist but not invoked
+- orchestrator.py:2156: Calls _es.create_exception() but only in gap features
+
+**Risk Level**: **MEDIUM** ƒ?" Exception tracking incomplete; audit trail gaps
+
+---
+
+### **20. ƒsÿ‹,? MEDIUM: Budget Ledger Not Rolled Back on Workflow Failure**
+
+**Issue**: Budget commitment recorded at line 1627, but if workflow fails later, commitment is never released
+
+**Files**: 
+- orchestrator.py:1623ƒ?"1637 (budget ledger recording)
+- No rollback mechanism on failure
+
+**Risk Level**: **MEDIUM** ƒ?" Budget availability inaccurate if workflows fail after commitment
+
+---
+
+---
+
+## **APPENDIX A: ROUTE ENDPOINT SUMMARY TABLE**
+
+**Total endpoints**: 174 across 19 route files
+
+| **Category** | **Count** | **Avg Complexity** | **Test Coverage** |
+|---|---|---|---|
+| **GET** (data fetch) | 62 | Low | Unknown |
+| **POST** (creation/action) | 96 | High | Unknown |
+| **PUT** (update) | 12 | Medium | Unknown |
+| **DELETE** (removal) | 4 | Low | Unknown |
+
+---
+
+## **APPENDIX B: AGENT REGISTRATION CHECKLIST**
+
+**Registered at startup**: 23 agents
+
+| **Agent** | **File** | **Task Type** | **P2P Role** | **Registered** |
+|---|---|---|---|---|
+| BudgetVerificationAgent | budget_verification.py | Agent | Step 2 | ƒo" Line 2682 |
+| ApprovalRoutingAgent | approval_routing.py | Agent | Step 6 | ƒo" Line 2686 |
+| VendorSelectionAgent | vendor_selection.py | Agent | Step 3 | ƒo" Line 2690 |
+| RiskAssessmentAgent | risk_assessment.py | Agent | Step 4.5 | ƒo" Line 2694 |
+| ContractMonitoringAgent | contract_monitoring.py | Agent | Gap | ƒo" Line 2698 |
+| SupplierPerformanceAgent | supplier_performance.py | Agent | Reporting | ƒo" Line 2702 |
+| PriceAnalysisAgent | price_analysis.py | Agent | RFQ | ƒo" Line 2708 |
+| ComplianceCheckAgent | compliance_check.py | Agent | Step 1 | ƒo" Line 2714 |
+| InvoiceMatchingAgent | invoice_matching.py | Agent | Step 12/13 | ƒo" Line 2718 |
+| SpendAnalyticsAgent | spend_analytics.py | Agent | Reporting | ƒo" Line 2723 |
+| InventoryCheckAgent | inventory_check.py | Agent | Delivery validation | ƒo" Line 2729 |
+| RFQAgent | rfq_agent.py | Agent | RFQ | ƒo" Line 2785 |
+| POAmendmentAgent | po_amendment_agent.py | Agent | Amendments | ƒo" Line 2786 |
+| ReturnAgent | return_agent.py | Agent | Returns | ƒo" Line 2787 |
+| QualityInspectionAgent | qc_agent.py | Agent | Step 11 | ƒo" Line 2788 |
+| ReconciliationAgent | reconciliation_agent.py | Agent | Reconciliation | ƒo" Line 2789 |
+| QuoteComparisonAgent | quote_comparison_agent.py | Agent | RFQ | ƒo" Line 2790 |
+| GoodsReceiptAgent | goods_receipt_agent.py | Agent | Step 10 | ƒo" Line 2791 |
+| VendorOnboardingAgent | vendor_onboarding_agent.py | Agent | Vendor | ƒo" Line 2799 |
+| DeliveryTrackingAgent | delivery_tracking_agent.py | Agent | Step 9 | ƒo" Line 2800 |
+| DiscrepancyResolutionAgent | discrepancy_resolution_agent.py | Agent | Exceptions | ƒo" Line 2801 |
+| PaymentReadinessAgent | payment_readiness_agent.py | Agent | Step 14 | ƒo" Line 2802 |
+| PaymentCalculationAgent | payment_calculation_agent.py | Agent | Step 15 | ƒo" Line 2806 |
+| PaymentApprovalAgent | payment_approval_agent.py | Agent | Payment approval | ƒo" Line 2807 |
+
+**Not registered**: Several agents exist but may not be in startup:
+- DocumentProcessingAgent
+- EmailInboxAgent
+- NotificationAgent
+- MonitoringDashboardAgent
+
+---
+
+## **FINAL SUMMARY & RECOMMENDATIONS**
+
+### **Overall Architecture Assessment**
+
+| **Aspect** | **Score** | **Reasoning** |
+|---|---|---|
+| **Orchestration & Agent Coordination** | 7/10 | Sophisticated LLM routing + DAG-based workflow engine; but missing resume logic for 50% of phases |
+| **Data Persistence** | 4/10 | PostgreSQL backend solid; but missing P2P foreign keys; no referential integrity for 3-way match |
+| **Error Recovery** | 3/10 | Minimal retry logic; non-blocking errors hide failures; no dead-letter queue |
+| **API Coverage** | 8/10 | 174 endpoints cover all P2P stages; but route duplication and overlap |
+| **ERP Adapter Abstraction** | 5/10 | Factory pattern works; but create methods only in PostgreSQL; other adapters silently delegate |
+| **Human Gate UX** | 6/10 | SSE streaming works; but stream closes at gates; no persistent reconnection |
+| **Workflow Persistence** | 7/10 | Survives restart; good task DAG; but no timeout detection, no rewind |
+| **Logging & Observability** | 5/10 | Logs exist; but non-blocking failures log as warnings; no alerts on critical failures |
+
+### **Recommended Immediate Fixes (Priority 1)**
+
+1. **Add P2P Foreign Keys** (1ƒ?"2 days)
+   - PR ƒ+' PO, PO ƒ+' GRN, GRN ƒ+' Invoice, Invoice ƒ+' Payment
+   - Enables data integrity checks, 3-way match validation
+
+2. **Mark DB Failures as Errors, Not Completions** (1 day)
+   - Check all try/except blocks in orchestrator
+   - If DB write fails, return error status to frontend
+
+3. **Implement Missing Resume Phases** (2ƒ?"3 days)
+   - post_qc, post_invoice, post_payment_release handlers
+
+4. **Complete Task-to-Agent Mapping** (1 day)
+   - Add entries for human gates and system tasks
+
+5. **Add Retry Logic for Transient Failures** (2 days)
+   - Wrap agent calls in @retry decorator
+   - Max 3 attempts with exponential backoff
+
+### **Recommended Medium-Term Fixes (Priority 2)**
+
+6. **Extract Duplicate PR Creation Logic** (1 day)
+7. **Consolidate RTV Endpoints** (1 day)
+8. **Implement Approver Auto-Notification** (2 days)
+9. **Implement Hung Task Detection** (2 days)
+10. **Implement Dead-Letter Queue & Alerts** (3 days)
+
+### **Recommended Long-Term Refactors (Priority 3)**
+
+11. Unify status fields across tables
+12. Implement transaction-level consistency for P2P atomic operations
+13. Add comprehensive retry and circuit breaker patterns
+14. Implement event sourcing for audit trail
+15. Add contract fulfillment tracking per G-02
+
+---
+
+**END OF AUDIT REPORT**

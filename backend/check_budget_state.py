@@ -1,7 +1,9 @@
-import psycopg2
+import os, psycopg2
 from decimal import Decimal
+from dotenv import load_dotenv
+load_dotenv()
 
-conn = psycopg2.connect('postgresql://postgres:YourStr0ng!Pass@localhost:5433/odoo_procurement_demo')
+conn = psycopg2.connect(os.getenv('DATABASE_URL') or 'postgresql://postgres:postgres@localhost:5433/odoo_procurement_demo')
 cur = conn.cursor()
 
 print("=" * 60)
@@ -18,7 +20,7 @@ cur.execute("""
 """)
 it_budget = cur.fetchall()
 
-print("\n🔍 IT Department (FY 2026):")
+print("\nIT Department (FY 2026):")
 for row in it_budget:
     dept, category, allocated, spent, committed, available = row
     print(f"\n  {category}:")
@@ -39,7 +41,7 @@ cur.execute("""
 """)
 finance_budget = cur.fetchall()
 
-print("\n\n🔍 Finance Department (FY 2026):")
+print("\n\nFinance Department (FY 2026):")
 for row in finance_budget:
     dept, category, allocated, spent, committed, available = row
     print(f"\n  {category}:")
@@ -51,16 +53,16 @@ for row in finance_budget:
     print(f"    Utilization: {utilization:>11.1f}%")
 
 print("\n" + "=" * 60)
-print("\n❓ EXPECTED vs ACTUAL:")
+print("\nEXPECTED vs ACTUAL:")
 print("\nTest 1: Verify IT $30K CAPEX")
 print("  Expected committed: $800,000 + $30,000 = $830,000")
 print(f"  Actual committed:   ${it_budget[0][4]:,.2f}")  # CAPEX is first row
 if it_budget[0][4] == Decimal('830000.00'):
-    print("  ✅ MATCH - Budget persisted correctly")
+    print("  MATCH - Budget persisted correctly")
 elif it_budget[0][4] == Decimal('800000.00'):
-    print("  ❌ NO CHANGE - Budget update didn't persist!")
+    print("  NO CHANGE - Budget update didn't persist!")
 else:
-    print(f"  ⚠️  UNEXPECTED VALUE")
+    print(f"  ️  UNEXPECTED VALUE")
 
 print("\nTest 3: Route Finance $55K (should also verify budget)")
 print("  Expected: Finance budget should reflect some change")

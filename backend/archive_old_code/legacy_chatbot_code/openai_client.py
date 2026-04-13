@@ -350,16 +350,16 @@ Analyze the query results and provide:
 FORMAT:
 ---
 
-### 🔍 **AI Insights & Recommendations**
+### **AI Insights & Recommendations**
 
 **Patterns Detected:**
 - [Pattern 1 with specific numbers/percentages]
 - [Pattern 2 with specific data points]
 
-**⚠️ Alerts:**
+**️ Alerts:**
 - [Critical issue with specific PR numbers or metrics]
 
-**💡 Recommendations:**
+**Recommendations:**
 - [Actionable step 1 with specific details]
 - [Actionable step 2 with specific details]
 

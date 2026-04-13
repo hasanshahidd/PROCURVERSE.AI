@@ -3,12 +3,13 @@ Agentic API Routes
 Sprint 1: Testing endpoints for orchestrator and agents
 """
 
-from fastapi import APIRouter, HTTPException, Request, Header, Depends, UploadFile, File, Form
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Header, Depends, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from typing import Dict, Any, Optional, List
 import base64
+import asyncio
 import logging
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -24,7 +25,8 @@ from backend.services.rbac import require_auth, require_role
 from backend.agents.orchestrator import initialize_orchestrator_with_agents
 from backend.agents.budget_verification import BudgetVerificationAgent
 from backend.agents.approval_routing import ApprovalRoutingAgent
-from backend.services.odoo_client import get_odoo_client
+# Adapter-based ERP access — no direct Odoo imports
+from backend.services.adapters.factory import get_adapter as _get_erp_adapter
 from backend.agents.vendor_selection import VendorSelectionAgent
 from backend.agents.risk_assessment import RiskAssessmentAgent
 from backend.services import hybrid_query
@@ -32,6 +34,7 @@ from backend.services.db_pool import get_db_connection, return_db_connection
 from backend.services import agent_event_stream
 from backend.services.query_router import classify_query_intent, resolve_followup_context_with_llm, _fix_multi_intent_routing
 from backend.services.routing_schema import normalize_odoo_query_type
+from backend.services.session_service import SessionService, SessionServiceError  # Layer 1: execution sessions
 
 logger = logging.getLogger(__name__)
 
@@ -147,9 +150,15 @@ def _extract_quantity_from_text(text: str) -> Optional[int]:
     if not text:
         return None
 
+    # Sprint D bugfix (2026-04-11): broader noun list + procurement-verb
+    # pattern + "first integer when $X each is present" fallback so
+    # "Procure 20 Dell PowerEdge servers at $8 each" correctly extracts
+    # quantity=20 (was returning None, which defaulted to 1, and made
+    # the total budget = 1 * 8 = $8 instead of 20 * 8 = $160).
     quantity_patterns = [
         r"\b(?:quantity|qty)\s*[:=]?\s*(\d+)\b",
-        r"(\d+)\s*(?:laptop\s+accessories|laptops?|accessories|units?|items?|pcs?|pieces?)\b",
+        r"(\d+)\s*(?:laptop\s+accessories|laptops?|accessories|servers?|monitors?|printers?|desktops?|workstations?|devices?|machines?|units?|items?|pcs?|pieces?)\b",
+        r"\b(?:procure|buy|order|purchase|get|need|request|acquire)\s+(?:me\s+)?(\d+)\b",
     ]
 
     for pattern in quantity_patterns:
@@ -161,6 +170,22 @@ def _extract_quantity_from_text(text: str) -> Optional[int]:
                 continue
             if parsed > 0:
                 return parsed
+
+    # Fallback: if "at $X each" / "for $X each" is present, the first
+    # integer anywhere in the text is almost always the quantity.
+    if re.search(
+        r"(?:at|for)\s*\$?\s*[0-9][0-9,]*(?:\.\d+)?\s*(?:k|m)?\s*(?:each|per\s*(?:item|unit|pc|piece))\b",
+        text,
+        re.I,
+    ):
+        first_num = re.search(r"\b(\d+)\b", text)
+        if first_num:
+            try:
+                parsed = int(first_num.group(1))
+                if parsed > 0:
+                    return parsed
+            except (TypeError, ValueError):
+                pass
     return None
 
 
@@ -249,7 +274,7 @@ def _enrich_pr_data_from_filters(base_pr_data: Dict[str, Any], intent_filters: D
         # Department is required for PR creation — do NOT silently default.
         # The frontend is responsible for prompting the user before sending.
         # Leave department empty; the orchestrator will handle missing department gracefully.
-        print(f"[PR_DATA_ENRICHMENT] ⚠️  Department not specified — leaving blank (frontend should have asked)")
+        logger.info(f"[PR_DATA_ENRICHMENT] ️  Department not specified — leaving blank (frontend should have asked)")
     
     # Extract category
     if "category" in intent_filters:
@@ -286,15 +311,15 @@ def _enrich_pr_data_from_filters(base_pr_data: Dict[str, Any], intent_filters: D
         # Electronics/IT hardware is usually CAPEX if > $5k
         if any(keyword in category_lower for keyword in ["electronics", "hardware", "equipment", "furniture"]) and budget > 5000:
             enriched["budget_category"] = "CAPEX"
-            print(f"[PR_DATA_ENRICHMENT] ℹ️  budget_category not specified - inferred 'CAPEX' from category '{category}' and ${budget:,.0f}")
+            logger.info(f"[PR_DATA_ENRICHMENT] ️  budget_category not specified - inferred 'CAPEX' from category '{category}' and ${budget:,.0f}")
         # Office supplies, software licenses are usually OPEX
         elif any(keyword in category_lower for keyword in ["supplies", "software", "license", "subscription"]):
             enriched["budget_category"] = "OPEX"
-            print(f"[PR_DATA_ENRICHMENT] ℹ️  budget_category not specified - inferred 'OPEX' from category '{category}'")
+            logger.info(f"[PR_DATA_ENRICHMENT] ️  budget_category not specified - inferred 'OPEX' from category '{category}'")
         else:
             # Default based on amount
             enriched["budget_category"] = "CAPEX" if budget > 10000 else "OPEX"
-            print(f"[PR_DATA_ENRICHMENT] ⚠️  budget_category not specified - defaulting to {enriched['budget_category']} based on ${budget:,.0f}")
+            logger.info(f"[PR_DATA_ENRICHMENT] ️  budget_category not specified - defaulting to {enriched['budget_category']} based on ${budget:,.0f}")
     
     # Extract urgency
     if "urgency" in intent_filters:
@@ -449,7 +474,11 @@ def _attach_intent_metadata(
 
 
 def _build_po_data_result(user_query: str, filters: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    odoo = get_odoo_client()
+    """Build purchase order results using the active ERP adapter (not Odoo-specific)."""
+    from backend.services.adapters.factory import get_adapter
+    adapter = get_adapter()
+    source = adapter.source_name()
+
     po_filters = filters or {}
     state_filter = _normalize_po_state(po_filters.get("state"))
 
@@ -460,54 +489,55 @@ def _build_po_data_result(user_query: str, filters: Optional[Dict[str, Any]] = N
         except (TypeError, ValueError):
             amount_filter = None
 
-    domain: List = []
-    if state_filter:
-        domain.append(("state", "=", state_filter))
-    if amount_filter is not None:
-        domain.append(("amount_total", ">", amount_filter))
+    # Fetch POs from adapter (works with any ERP)
+    orders = adapter.get_purchase_orders(status=state_filter, limit=200)
 
-    total_count = int(odoo.search_count("purchase.order", domain) or 0)
+    # Apply client-side amount filter if requested
+    if amount_filter is not None:
+        orders = [o for o in orders if float(o.get("amount_total") or o.get("total_amount") or 0) > amount_filter]
+
+    total_count = len(orders)
 
     if _is_po_count_query(user_query):
         return {
             "status": "completed",
-            "agent": "OdooDataService",
+            "agent": "ERPDataService",
             "result": {
                 "status": "success",
-                "data_source": "odoo",
+                "data_source": source,
                 "query_type": "purchase_orders",
                 "summary": f"Total purchase orders: {total_count}",
                 "total_purchase_orders": total_count,
                 "state_filter": state_filter,
                 "amount_min": amount_filter,
             },
-            "data_source": "odoo",
+            "data_source": source,
             "query_type": "purchase_orders",
         }
 
-    # Return full list for direct "list/show all" requests while keeping a safe cap.
-    list_limit = min(max(total_count, 20), 200)
-    orders = odoo.get_purchase_orders(limit=list_limit, domain=domain)
+    # Normalize vendor name from various ERP formats
     simplified_orders: List[Dict[str, Any]] = []
     for order in orders:
-        partner = order.get("partner_id")
-        vendor_name = partner[1] if isinstance(partner, list) and len(partner) > 1 else (
-            partner[1] if isinstance(partner, tuple) and len(partner) > 1 else "Unknown Vendor"
+        vendor_name = (
+            order.get("vendor_name")
+            or order.get("partner_name")
+            or (order["partner_id"][1] if isinstance(order.get("partner_id"), (list, tuple)) and len(order.get("partner_id", [])) > 1 else None)
+            or "Unknown Vendor"
         )
         simplified_orders.append({
-            "name": order.get("name"),
-            "state": order.get("state"),
-            "amount_total": order.get("amount_total"),
-            "date_order": order.get("date_order"),
+            "name": order.get("name") or order.get("po_number") or order.get("order_number"),
+            "state": order.get("state") or order.get("status"),
+            "amount_total": order.get("amount_total") or order.get("total_amount"),
+            "date_order": order.get("date_order") or order.get("order_date"),
             "vendor_name": vendor_name,
         })
 
     return {
         "status": "completed",
-        "agent": "OdooDataService",
+        "agent": "ERPDataService",
         "result": {
             "status": "success",
-            "data_source": "odoo",
+            "data_source": source,
             "query_type": "purchase_orders",
             "summary": f"Showing {len(simplified_orders)} of {total_count} purchase orders.",
             "total_purchase_orders": total_count,
@@ -515,7 +545,7 @@ def _build_po_data_result(user_query: str, filters: Optional[Dict[str, Any]] = N
             "amount_min": amount_filter,
             "purchase_orders": simplified_orders,
         },
-        "data_source": "odoo",
+        "data_source": source,
         "query_type": "purchase_orders",
     }
 
@@ -528,17 +558,21 @@ def _build_odoo_data_result(user_query: str, query_type: str, filters: Optional[
         return _build_po_data_result(user_query, normalized_filters)
 
     records = hybrid_query.query_odoo_data(normalized_type, normalized_filters)
+    try:
+        source_label = _get_erp_adapter().source_name()
+    except Exception:
+        source_label = "ERP"
     return {
         "status": "completed",
-        "agent": "OdooDataService",
+        "agent": "ERPDataService",
         "result": {
             "status": "success",
-            "data_source": "odoo",
+            "data_source": source_label,
             "query_type": normalized_type,
             "summary": f"Showing {len(records)} {normalized_type}.",
             normalized_type: records,
         },
-        "data_source": "odoo",
+        "data_source": source_label,
         "query_type": normalized_type,
     }
 
@@ -615,17 +649,215 @@ async def _build_multi_vendor_risk_result(user_query: str, pr_data: Optional[Dic
     }
 
 
+def _generate_fallback_message(query_type: str, agent_data: Dict, primary: Dict, inner: Dict) -> str:
+    """Generate a user-friendly message when the agent didn't provide one."""
+    qt = (query_type or "").upper()
+
+    # Try reasoning from decision
+    decision = primary.get("decision", {}) if isinstance(primary, dict) else {}
+    reasoning = ""
+    if isinstance(decision, dict):
+        reasoning = decision.get("reasoning", "")
+
+    if qt in ("BUDGET", "BUDGET_CHECK", "BUDGET_TRACKING"):
+        verified = agent_data.get("budget_verified")
+        avail = agent_data.get("available_budget", "")
+        dept = agent_data.get("department", "")
+        if verified is True:
+            return f"Budget verified for {dept}. Available: ${avail}." if avail else f"Budget verified for {dept}."
+        elif verified is False:
+            reason = agent_data.get("reason", reasoning)
+            return f"Budget insufficient for {dept}. {reason}" if reason else f"Budget insufficient for {dept}."
+        return reasoning or "Budget check completed."
+
+    if qt in ("RISK", "RISK_ASSESSMENT"):
+        level = agent_data.get("risk_level", "UNKNOWN")
+        score = agent_data.get("risk_score", "")
+        dept = agent_data.get("department", "")
+        msg = f"Risk assessment: {level}"
+        if score:
+            msg += f" (score: {score}/100)"
+        if dept:
+            msg += f" for {dept}"
+        msg += "."
+        if reasoning:
+            msg += f" {reasoning}"
+        return msg
+
+    if qt in ("VENDOR", "VENDOR_SELECTION"):
+        vendor = agent_data.get("vendor_name", "")
+        if vendor:
+            return f"Recommended vendor: {vendor}. {reasoning}" if reasoning else f"Recommended vendor: {vendor}."
+        return reasoning or "Vendor analysis completed."
+
+    if qt in ("APPROVAL", "APPROVAL_ROUTING"):
+        return reasoning or "Approval routing completed."
+
+    if qt in ("COMPLIANCE", "COMPLIANCE_CHECK"):
+        action = agent_data.get("action", "")
+        if action == "approve":
+            return "Compliance check passed. Request meets all policy requirements."
+        elif action == "reject":
+            return "Compliance check failed. Request does not meet policy requirements."
+        return reasoning or "Compliance check completed."
+
+    if qt in ("INVOICE", "INVOICE_MATCHING"):
+        matched = agent_data.get("matched")
+        if matched is True:
+            return "Invoice matched successfully."
+        elif matched is False:
+            return "Invoice matching found discrepancies."
+        return reasoning or "Invoice processing completed."
+
+    if qt in ("CREATE", "PR_CREATION"):
+        pr = agent_data.get("pr_number", "")
+        return f"Purchase Requisition {pr} created successfully." if pr else reasoning or "PR creation completed."
+
+    if qt in ("SPEND", "SPEND_ANALYTICS"):
+        return reasoning or "Spend analysis completed."
+
+    if qt in ("INVENTORY", "INVENTORY_CHECK"):
+        return reasoning or "Inventory check completed."
+
+    # Generic fallback
+    return reasoning or "Request processed successfully."
+
+
+def _build_p2p_response(raw_result: Dict[str, Any]) -> Dict[str, Any]:
+    """Transform orchestrator's P2P_FULL result into P2PResponse-compatible dict."""
+    actions = raw_result.get("actions_completed", [])
+    step_results = []
+    for action in actions:
+        step_results.append({
+            "step": action.get("step", "unknown"),
+            "status": action.get("status", "unknown"),
+            "summary": action.get("summary", ""),
+            "agent": action.get("agent"),
+            "data": action.get("data"),
+        })
+
+    return {
+        "workflow_id": raw_result.get("workflow_run_id", ""),
+        "workflow_run_id": raw_result.get("workflow_run_id", ""),
+        "workflow_type": "P2P_FULL",
+        "status": raw_result.get("status", "in_progress"),
+        "actions_completed": step_results,
+        "current_step": raw_result.get("current_step"),
+        "pending_exceptions": raw_result.get("pending_exceptions", []),
+        "human_action_required": raw_result.get("human_action_required"),
+        "suggested_next_actions": raw_result.get("suggested_next_actions", []),
+        "summary": raw_result.get("summary", ""),
+        "pr_number": raw_result.get("pr_number"),
+        "po_number": raw_result.get("po_number"),
+        "vendor_name": raw_result.get("vendor_name"),
+        "total_amount": raw_result.get("total_amount"),
+        "top_vendor_options": raw_result.get("top_vendor_options", []),
+        "workflow_context": raw_result.get("workflow_context"),
+        "validations": raw_result.get("validations", {}),
+        # Dev Spec 2.0 gap fields
+        "warnings": raw_result.get("warnings", []),
+        "gap_alerts": {
+            "maverick_spend": any(
+                "maverick" in str(w).lower() for w in raw_result.get("warnings", [])
+            ),
+            "duplicate_invoice": any(
+                "duplicate" in str(w).lower() for w in raw_result.get("warnings", [])
+            ),
+            "contract_variance": any(
+                "contract" in str(w).lower() or "variance" in str(w).lower()
+                for w in raw_result.get("warnings", [])
+            ),
+            "exception_count": len(raw_result.get("pending_exceptions", [])),
+        },
+    }
+
+
+# Procurement-verb pattern used to upgrade CREATE → P2P_FULL when the user
+# explicitly asked to "procure / buy / purchase / order / acquire" something.
+# Surgical bridge until R16 routing guards land — see plan §HF-?/R16.
+_PROCUREMENT_VERB_RE = re.compile(
+    r"\b(procure|procurement|buy|buying|purchase|purchasing|order|ordering|acquire|acquiring)\b",
+    re.IGNORECASE,
+)
+
+
+def _upgrade_create_to_p2p_full(
+    request_text: str, intents: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """
+    Bridge fix (pre-R16): when the LLM classifier returns query_type=CREATE
+    but the request is actually a full procurement ask (quantity + product +
+    explicit procurement verb), rewrite the intent to P2P_FULL so the
+    orchestrator runs the agentic P2P pipeline and a session is created.
+
+    The CREATE→pr_creation path only creates a PR document; users typing
+    "Procure 20 Dell servers for IT" expect the full P2P workflow to run.
+    Without this upgrade the request silently lands on the legacy single-
+    agent pr_creation path with no session.
+
+    Guard: only upgrade when ALL of these hold for at least one intent:
+      - query_type == CREATE
+      - filters has a non-empty `quantity`
+      - filters has a non-empty `product_name`
+      - request text contains a procurement verb
+    Otherwise the intents are returned unchanged.
+    """
+    if not intents or not request_text:
+        return intents
+    if not _PROCUREMENT_VERB_RE.search(request_text):
+        return intents
+
+    upgraded = False
+    new_intents: List[Dict[str, Any]] = []
+    for intent in intents:
+        if not isinstance(intent, dict):
+            new_intents.append(intent)
+            continue
+        qt = str(intent.get("query_type", "")).upper()
+        filters = intent.get("filters") or {}
+        if (
+            qt == "CREATE"
+            and isinstance(filters, dict)
+            and filters.get("quantity")
+            and filters.get("product_name")
+        ):
+            new_intent = dict(intent)
+            new_intent["query_type"] = "P2P_FULL"
+            new_intents.append(new_intent)
+            upgraded = True
+        else:
+            new_intents.append(intent)
+
+    if upgraded:
+        logger.info(
+            "[INTENT UPGRADE] CREATE → P2P_FULL "
+            "(procurement verb + quantity + product_name detected)"
+        )
+    return new_intents
+
+
 def _canonicalize_intents(intents: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     Collapse redundant intent combinations into a single workflow.
 
     CREATE already runs compliance/budget/approval workflow in orchestrator,
     so CREATE + APPROVAL should execute as CREATE only.
+    P2P_FULL subsumes all individual P2P intents.
     """
     if not intents:
         return intents
 
     normalized_types = {str((intent or {}).get("query_type", "")).upper() for intent in intents}
+
+    # P2P_FULL subsumes individual workflow intents
+    if "P2P_FULL" in normalized_types:
+        subsumed = {"CREATE", "APPROVAL", "BUDGET", "VENDOR", "COMPLIANCE", "P2P"}
+        collapsed = [intent for intent in intents
+                     if str((intent or {}).get("query_type", "")).upper() not in subsumed]
+        if len(collapsed) < len(intents):
+            logger.info("[INTENT CANONICALIZATION] P2P_FULL subsumes individual workflow intents")
+        return collapsed if collapsed else intents
+
     if "CREATE" in normalized_types and "APPROVAL" in normalized_types:
         collapsed = [intent for intent in intents if str((intent or {}).get("query_type", "")).upper() != "APPROVAL"]
         if collapsed:
@@ -643,6 +875,7 @@ _AGENTIC_AGENT_TYPES = {
     "price_analysis", "compliance_check", "invoice_matching",
     "spend_analytics", "inventory_check",
     "pr_creation", "pr", "create", "po_creation", "po",
+    "p2p_full", "p2p", "procure", "end_to_end", "procure_to_pay",
 }
 
 
@@ -670,6 +903,11 @@ def _apply_agent_type_override(query_type: str, agent_type: Optional[str]) -> st
         "invoice_matching": "INVOICE",
         "spend_analytics": "SPEND",
         "inventory_check": "INVENTORY",
+        "p2p_full": "P2P_FULL",
+        "p2p": "P2P_FULL",
+        "procure": "P2P_FULL",
+        "end_to_end": "P2P_FULL",
+        "procure_to_pay": "P2P_FULL",
     }
 
     if normalized in override_map:
@@ -702,6 +940,13 @@ class AgenticRequest(BaseModel):
     request: str
     pr_data: Optional[Dict[str, Any]] = None
     agent_type: Optional[str] = None  # If targeting specific agent
+    # Sprint E (2026-04-11): session context passthrough. When the frontend
+    # submits a follow-up message from inside an active session, it forwards
+    # the session_id here so the router can skip P2P_FULL re-creation and
+    # treat the message as a conversational continuation of the existing run.
+    # Absent/null means "fresh request from chat".
+    session_id: Optional[str] = None
+    in_session_context: Optional[bool] = None
     
 
 class AgenticResponse(BaseModel):
@@ -713,6 +958,34 @@ class AgenticResponse(BaseModel):
     data_source: Optional[str] = None
     query_type: Optional[str] = None
     error: Optional[str] = None
+    message: Optional[str] = None
+    data: Optional[Dict[str, Any]] = None
+
+
+class P2PStepResult(BaseModel):
+    """Individual step result in a P2P workflow"""
+    step: str
+    status: str          # passed, approved, created, waiting, failed, skipped
+    summary: str
+    agent: Optional[str] = None
+    data: Optional[Dict[str, Any]] = None
+
+
+class P2PResponse(BaseModel):
+    """Unified response for Full Procure-to-Pay workflow"""
+    workflow_id: str
+    workflow_type: str = "P2P_FULL"
+    status: str          # completed, waiting_human, in_progress, failed
+    actions_completed: List[P2PStepResult] = []
+    current_step: Optional[str] = None
+    pending_exceptions: List[Dict[str, Any]] = []
+    human_action_required: Optional[Dict[str, Any]] = None
+    suggested_next_actions: List[str] = []
+    summary: str = ""
+    pr_number: Optional[str] = None
+    po_number: Optional[str] = None
+    vendor_name: Optional[str] = None
+    total_amount: Optional[float] = None
 
 
 # New models for approval system
@@ -747,16 +1020,16 @@ async def execute_agentic_request(request: AgenticRequest, current_user: dict = 
     appropriate specialized agent(s).
     """
     print("\n" + "="*80)
-    print("[AGENTIC EXECUTE] 🤖 Orchestrator execution requested")
+    logger.info("[AGENTIC EXECUTE] Orchestrator execution requested")
     print("="*80)
     try:
         request_id = str(uuid.uuid4())
-        print(f"[EXECUTE] 📥 Request: {request.request[:100]}{'...' if len(request.request) > 100 else ''}")
-        print(f"[EXECUTE] 📊 PR Data: {request.pr_data}")
-        print(f"[EXECUTE] 🎯 Agent Type: {request.agent_type or 'Auto-detect'}")
+        logger.info(f"[EXECUTE] Request: {request.request[:100]}{'...' if len(request.request) > 100 else ''}")
+        logger.info(f"[EXECUTE] PR Data: {request.pr_data}")
+        logger.info(f"[EXECUTE] Agent Type: {request.agent_type or 'Auto-detect'}")
         
-        # 🔥 CLASSIFY THE QUERY FIRST (multi-intent support)
-        print(f"[EXECUTE] 🧠 Classifying query to determine query_type...")
+        # CLASSIFY THE QUERY FIRST (multi-intent support)
+        logger.info(f"[EXECUTE] Classifying query to determine query_type...")
         classification = classify_query_intent(request.request)
         classification = resolve_followup_context_with_llm(request.request, classification, request.pr_data)
         
@@ -770,15 +1043,17 @@ async def execute_agentic_request(request: AgenticRequest, current_user: dict = 
                 "filters": classification.get("filters", {})
             }]
 
+        # Bridge fix: upgrade procurement-shaped CREATE to P2P_FULL before canonicalization
+        intents = _upgrade_create_to_p2p_full(request.request, intents)
         intents = _canonicalize_intents(intents)
         # Safety net: re-apply multi-intent keyword correction after canonicalization
         intents = _fix_multi_intent_routing(request.request, intents)
-        
-        print(f"[EXECUTE] 🔍 Detected {len(intents)} intent(s)")
+
+        logger.info(f"[EXECUTE] Detected {len(intents)} intent(s)")
         
         # Multi-intent execution (sequential)
         if len(intents) > 1:
-            print(f"[EXECUTE] 🔄 MULTI-INTENT: Executing {len(intents)} agents sequentially...")
+            logger.info(f"[EXECUTE] MULTI-INTENT: Executing {len(intents)} agents sequentially...")
             all_results = []
             all_query_types = []
             normalized_base_pr_data = _hydrate_pr_data_from_workflow(
@@ -805,7 +1080,7 @@ async def execute_agentic_request(request: AgenticRequest, current_user: dict = 
 
                 # Budget gate: skip approval if budget check failed earlier in this sequence
                 if budget_failed and intent_query_type_upper == "APPROVAL":
-                    print(f"[EXECUTE - Intent {idx}] ⛔ Skipping approval due to failed budget verification")
+                    logger.info(f"[EXECUTE - Intent {idx}] Skipping approval due to failed budget verification")
                     blocked_result = {
                         "primary_result": {
                             "status": "blocked_by_budget",
@@ -829,7 +1104,7 @@ async def execute_agentic_request(request: AgenticRequest, current_user: dict = 
 
                 # Create gate: skip approval if PR creation workflow failed earlier
                 if create_failed and intent_query_type_upper == "APPROVAL":
-                    print(f"[EXECUTE - Intent {idx}] ⛔ Skipping approval because CREATE workflow failed")
+                    logger.info(f"[EXECUTE - Intent {idx}] Skipping approval because CREATE workflow failed")
                     blocked_result = {
                         "primary_result": {
                             "status": "blocked_by_pr_creation",
@@ -853,7 +1128,7 @@ async def execute_agentic_request(request: AgenticRequest, current_user: dict = 
 
                 # Duplicate gate: CREATE workflow already performed approval routing
                 if create_already_routed and intent_query_type_upper == "APPROVAL":
-                    print(f"[EXECUTE - Intent {idx}] ⏭️ Skipping duplicate approval routing (already routed during CREATE workflow)")
+                    logger.info(f"[EXECUTE - Intent {idx}] ⏭️ Skipping duplicate approval routing (already routed during CREATE workflow)")
                     skipped_result = {
                         "primary_result": {
                             "status": "success",
@@ -914,7 +1189,7 @@ async def execute_agentic_request(request: AgenticRequest, current_user: dict = 
                     print(f"[EXECUTE - Intent {idx}] Initializing orchestrator...")
                     orch = initialize_orchestrator_with_agents()
                     
-                    # 🔥 ENRICH PR_DATA FROM INTENT FILTERS (FIX FOR MULTI-INTENT NL QUERIES)
+                    # ENRICH PR_DATA FROM INTENT FILTERS (FIX FOR MULTI-INTENT NL QUERIES)
                     combined_filters = dict(shared_filters)
                     if isinstance(intent_filters, dict):
                         combined_filters.update(intent_filters)
@@ -979,7 +1254,7 @@ async def execute_agentic_request(request: AgenticRequest, current_user: dict = 
                             budget_failed = True
                             print("[BUDGET GATE] Budget verification failed; approval intent will be skipped")
             
-            print(f"\n[EXECUTE] ✅ MULTI-INTENT COMPLETE: Executed {len(intents)} intents")
+            logger.info(f"\n[EXECUTE] MULTI-INTENT COMPLETE: Executed {len(intents)} intents")
             
             # Combine results
             combined_result = {
@@ -1005,7 +1280,7 @@ async def execute_agentic_request(request: AgenticRequest, current_user: dict = 
         # If a specific agentic agent is locked by the user, never short-circuit to OdooDataService
         if request.agent_type and request.agent_type.strip().lower() in _AGENTIC_AGENT_TYPES:
             data_source = "agentic"
-        print(f"[EXECUTE] ✅ Classification result: query_type='{query_type}', data_source='{data_source}'")
+        logger.info(f"[EXECUTE] Classification result: query_type='{query_type}', data_source='{data_source}'")
 
         normalized_pr_data = _hydrate_pr_data_from_workflow(
             _normalize_budget_from_request_text(request.request, request.pr_data or {})
@@ -1016,12 +1291,12 @@ async def execute_agentic_request(request: AgenticRequest, current_user: dict = 
         enriched_pr_data = _hydrate_pr_data_from_workflow(
             _enrich_pr_data_from_filters(normalized_pr_data, intent_filters)
         )
-        print(f"[EXECUTE] 📦 Enriched pr_data: {enriched_pr_data}")
+        logger.info(f"[EXECUTE] Enriched pr_data: {enriched_pr_data}")
 
         # ── Early intercepts (apply regardless of data_source classification) ──
         # Multi-vendor risk comparison: always route to helper no matter how LLM classified it
         if re.search(r"\b(risk|risks)\b.{0,40}\b(all\s+vendors?|each\s+vendor|vendors?\s+all|across\s+vendors?)\b|\ball\s+vendors?\b.{0,40}\b(risk|risks)\b", request.request, re.I):
-            print("[EXECUTE] 🔍 Multi-vendor risk comparison detected — running comparison helper")
+            logger.info("[EXECUTE] Multi-vendor risk comparison detected — running comparison helper")
             multi = await _build_multi_vendor_risk_result(request.request, enriched_pr_data, limit=20)
             return AgenticResponse(
                 status=multi.get("status", "completed"),
@@ -1034,12 +1309,12 @@ async def execute_agentic_request(request: AgenticRequest, current_user: dict = 
 
         # Vendor recommendation: redirect raw Odoo vendor list to VendorSelectionAgent
         if data_source == "odoo" and normalize_odoo_query_type(query_type) == "vendors" and re.search(r"\b(top|best|recommend|suggest|rank|score)\b", request.request, re.I):
-            print("[EXECUTE] 🔁 Redirecting vendor list query to VendorSelectionAgent (recommendation intent detected)")
+            logger.info("[EXECUTE] Redirecting vendor list query to VendorSelectionAgent (recommendation intent detected)")
             data_source = "agentic"
             query_type = "VENDOR"
 
         if data_source == "odoo":
-            print("[EXECUTE] ✅ Odoo data query — bypassing orchestrator")
+            logger.info("[EXECUTE] Odoo data query — bypassing orchestrator")
             odoo_result = _build_odoo_data_result(request.request, query_type, intents[0].get("filters", {}))
             return AgenticResponse(
                 status=odoo_result.get("status", "completed"),
@@ -1052,7 +1327,7 @@ async def execute_agentic_request(request: AgenticRequest, current_user: dict = 
         
         # General/greeting queries — return a friendly response without invoking agents
         if data_source == "general" or query_type.upper() == "GENERAL":
-            print("[EXECUTE] 💬 General/greeting query — returning friendly response")
+            logger.info("[EXECUTE] General/greeting query — returning friendly response")
             return AgenticResponse(
                 status="success",
                 agent="AssistantBot",
@@ -1073,43 +1348,91 @@ async def execute_agentic_request(request: AgenticRequest, current_user: dict = 
                 query_type="GENERAL",
             )
         
-        print(f"[EXECUTE] 🔧 Initializing orchestrator...")
+        logger.info(f"[EXECUTE] Initializing orchestrator...")
         orch = initialize_orchestrator_with_agents()
-        print(f"[EXECUTE] ✅ Orchestrator ready with {len(orch.specialized_agents)} agents")
+        logger.info(f"[EXECUTE] Orchestrator ready with {len(orch.specialized_agents)} agents")
         
         # Build context WITH query_type from classifier
         context = {
             "request": request.request,
             "pr_data": enriched_pr_data,
-            "query_type": query_type,  # 🔥 PASS CLASSIFIER RESULT!
+            "query_type": query_type,  # PASS CLASSIFIER RESULT!
             "mode": "orchestrated",
             "request_id": request_id,
         }
-        print(f"[EXECUTE] 🔄 Executing through orchestrator with query_type='{query_type}'...")
+        logger.info(f"[EXECUTE] Executing through orchestrator with query_type='{query_type}'...")
         
         # Execute through orchestrator
         result = await orch.execute(context)
         
-        print(f"[EXECUTE] ✅ Execution complete:")
+        logger.info(f"[EXECUTE] Execution complete:")
         print(f"[EXECUTE]   - Status: {result.get('status', 'completed')}")
         print(f"[EXECUTE]   - Agent: {result.get('agent', 'Orchestrator')}")
         print(f"[EXECUTE]   - Has Decision: {bool(result.get('decision'))}")
         print(f"[EXECUTE]   - Has Result: {bool(result.get('result'))}")
         print("="*80 + "\n")
         
+        # Extract the agent's actual result for a rich response
+        raw_result = result.get("result", {})
+
+        # ── P2P_FULL workflow: wrap in P2PResponse format ──
+        if isinstance(raw_result, dict) and raw_result.get("workflow_type") == "P2P_FULL":
+            p2p_data = _build_p2p_response(raw_result)
+            return AgenticResponse(
+                status=raw_result.get("status", "in_progress"),
+                agent="P2POrchestrator",
+                decision=result.get("decision"),
+                result=p2p_data,
+                data_source="agentic",
+                query_type="P2P_FULL",
+                message=p2p_data.get("summary", ""),
+                data=p2p_data,
+            )
+
+        primary = raw_result.get("primary_result", {}) if isinstance(raw_result, dict) else {}
+        inner = primary.get("result", {}) if isinstance(primary, dict) else {}
+
+        # Surface agent's message at top level so chat displays it
+        agent_message = ""
+        agent_data = {}
+        for source in [primary, inner, raw_result]:
+            if isinstance(source, dict):
+                if not agent_message and source.get("message"):
+                    agent_message = str(source["message"])
+                for key in ["message", "action", "rfq_number", "amendment_number",
+                            "rtv_number", "po_number", "pr_number", "score", "pass_fail",
+                            "matched", "exceptions", "next_suggestions", "vendor_name",
+                            "budget_verified", "available_budget", "risk_level",
+                            "department", "title", "credit_expected", "accrual_ref",
+                            "debit_note_number", "deadline", "requires_approval",
+                            "workflow_type", "workflow_run_id", "actions_completed",
+                            "current_step", "human_action_required", "suggested_next_actions",
+                            "total_amount", "risk_score", "reason", "reasoning",
+                            "recommended_actions", "mitigations", "can_proceed",
+                            "breakdown", "top_vendor_options"]:
+                    val = source.get(key)
+                    if val is not None and key not in agent_data:
+                        agent_data[key] = val
+
+        # Generate fallback message when agent didn't provide one
+        if not agent_message:
+            agent_message = _generate_fallback_message(query_type, agent_data, primary, inner)
+
         return AgenticResponse(
             status=result.get("status", "completed"),
             agent=result.get("agent", "Orchestrator"),
             decision=result.get("decision"),
-            result=result.get("result"),
+            result=raw_result,
             data_source=data_source,
             query_type=query_type,
+            message=agent_message,
+            data=agent_data,
         )
         
     except Exception as e:
-        print(f"[EXECUTE] ❌ ERROR: {str(e)}")
+        logger.info(f"[EXECUTE] ERROR: {str(e)}")
         import traceback
-        print(f"[EXECUTE] 📋 Traceback:\n{traceback.format_exc()}")
+        logger.info(f"[EXECUTE] Traceback:\n{traceback.format_exc()}")
         print("="*80 + "\n")
         logger.error(f"Agentic execution failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1129,7 +1452,7 @@ async def execute_agentic_request_stream(request: AgenticRequest, current_user: 
     
     This endpoint provides live visualization of the agentic workflow.
     """
-    logger.info(f"[AGENTIC STREAM] 🌊 Starting SSE stream for request")
+    logger.info(f"[AGENTIC STREAM] Starting SSE stream for request")
     
     # Generate unique request ID
     request_id = str(uuid.uuid4())
@@ -1162,8 +1485,51 @@ async def execute_agentic_request_stream(request: AgenticRequest, current_user: 
 
             # Classify intent after initial events so UI receives immediate feedback
             # (keeps streaming responsive even when classification/LLM call is slower)
-            classification = classify_query_intent(request.request)
-            classification = resolve_followup_context_with_llm(request.request, classification, request.pr_data)
+            logger.info(f"[AGENTIC STREAM] Classifying intent for: '{request.request[:100]}'")
+
+            # Sprint E (2026-04-11): session-awareness. If the request arrives
+            # with a session_id attached, the user is typing follow-ups inside
+            # an already-running P2P session (e.g. "also check budget", "what
+            # about risk"). We must NOT re-trigger P2P_FULL here — that would
+            # spawn a second parallel pipeline. Instead, the message is routed
+            # to the running orchestrator as a conversational continuation.
+            _existing_session_id = (request.session_id or "").strip() or None
+            if _existing_session_id:
+                logger.info(
+                    f"[AGENTIC STREAM] Follow-up detected in session "
+                    f"{_existing_session_id}; suppressing P2P_FULL re-creation."
+                )
+
+            # Run sync LLM calls in a thread to avoid blocking the event loop
+            # (which would prevent SSE events from being streamed to the client)
+            classification = await asyncio.get_event_loop().run_in_executor(
+                None, classify_query_intent, request.request
+            )
+
+            # If we're in an existing session, strip any P2P_FULL / CREATE
+            # intents so we don't start a fresh procurement run.
+            if _existing_session_id:
+                raw_intents = classification.get("intents", []) or []
+                filtered = [
+                    it for it in raw_intents
+                    if str(it.get("query_type", "")).upper()
+                    not in ("P2P_FULL", "CREATE")
+                ]
+                if not filtered:
+                    filtered = [{
+                        "data_source": "general",
+                        "query_type": "GENERAL",
+                        "filters": {},
+                    }]
+                classification["intents"] = filtered
+                if filtered:
+                    classification["data_source"] = filtered[0].get("data_source", "general")
+                    classification["query_type"] = filtered[0].get("query_type", "GENERAL")
+                    classification["filters"] = filtered[0].get("filters", {})
+            logger.info(f"[AGENTIC STREAM] Classification result: query_type={classification.get('query_type')}, data_source={classification.get('data_source')}, confidence={classification.get('confidence')}")
+            classification = await asyncio.get_event_loop().run_in_executor(
+                None, resolve_followup_context_with_llm, request.request, classification, request.pr_data
+            )
             
             # Check for multi-intent queries
             intents = classification.get("intents", [])
@@ -1175,15 +1541,111 @@ async def execute_agentic_request_stream(request: AgenticRequest, current_user: 
                     "filters": classification.get("filters", {})
                 }]
 
+            # Bridge fix: upgrade procurement-shaped CREATE to P2P_FULL before canonicalization.
+            # The classifier sometimes returns CREATE for "Procure 20 X for Y" — without this
+            # the request silently lands on the legacy single-agent pr_creation path with no session.
+            intents = _upgrade_create_to_p2p_full(request.request, intents)
             intents = _canonicalize_intents(intents)
             # Safety net: re-apply multi-intent keyword correction after canonicalization
             intents = _fix_multi_intent_routing(request.request, intents)
-            
-            logger.info(f"[AGENTIC STREAM] 🔍 Detected {len(intents)} intent(s)")
+
+            logger.info(f"[AGENTIC STREAM] Detected {len(intents)} intent(s)")
+
+            # ── Layer 1: create execution session for P2P_FULL intent (HYBRID observer mode) ──
+            # Only P2P_FULL triggers a session. Conversational / single-agent queries stay
+            # in the legacy path. Emit a session_created SSE event so the frontend can
+            # redirect to /sessions/:id before the orchestrator starts running.
+            session_id: Optional[str] = None
+            is_p2p_full = any(
+                str(it.get("query_type", "")).upper() == "P2P_FULL" for it in intents
+            )
+            if is_p2p_full:
+                try:
+                    session_user_id = (
+                        current_user.get("sub")
+                        or current_user.get("email")
+                        or current_user.get("name")
+                        or "anonymous"
+                    )
+
+                    # Sprint D bugfix (2026-04-11): normalize pr_data BEFORE
+                    # session creation so the stored request_summary.pr_data
+                    # carries the correct budget. Before this fix, "Procure 20
+                    # servers at $8 each" would be stored with budget=8
+                    # (the raw unit price), and SessionHeader displayed $8.
+                    # Downstream orchestration already re-normalizes, but
+                    # that write never reached session_master.request_summary.
+                    _session_pr_data = _normalize_budget_from_request_text(
+                        request.request, request.pr_data or {}
+                    )
+                    # Also enrich from shared classifier filters so fields like
+                    # amount=N and department=IT land on the session master.
+                    _shared_filters = _collect_shared_intent_filters(intents)
+                    _session_pr_data = _enrich_pr_data_from_filters(
+                        _session_pr_data, _shared_filters
+                    )
+                    session_create_result = SessionService.create(
+                        kind="p2p_full",
+                        user_id=session_user_id,
+                        request_summary={
+                            "request": request.request,
+                            "pr_data": _session_pr_data,
+                            "initiated_via": "chat",
+                        },
+                        caller="query_router",
+                    )
+                    # SessionService.create returns Dict[str, Any] with shape
+                    # {"session_id": "<uuid>", "created": bool, "session": {...}}.
+                    # Unwrap to a string so downstream (SSE payload, orchestrator context,
+                    # psycopg2 UUID binding) all see a plain string.
+                    if isinstance(session_create_result, dict):
+                        session_id = session_create_result.get("session_id")
+                    else:
+                        session_id = session_create_result
+                    if not isinstance(session_id, str) or not session_id:
+                        logger.warning(
+                            "[AGENTIC STREAM] SessionService.create returned unexpected shape: %r",
+                            session_create_result,
+                        )
+                        session_id = None
+                    else:
+                        _was_created = (
+                            session_create_result.get("created", True)
+                            if isinstance(session_create_result, dict) else True
+                        )
+                        _existing_session = (
+                            session_create_result.get("session", {})
+                            if isinstance(session_create_result, dict) else {}
+                        )
+                        if _was_created:
+                            logger.info(f"[AGENTIC STREAM] Created execution session {session_id} for P2P_FULL")
+                        else:
+                            logger.info(
+                                f"[AGENTIC STREAM] R4 dedup: returning existing session {session_id} "
+                                f"(status={_existing_session.get('current_status')}, "
+                                f"phase={_existing_session.get('current_phase')})"
+                            )
+                        await stream.emit(agent_event_stream.AgentEventType.SESSION_CREATED, {
+                            "session_id": session_id,
+                            "kind": "p2p_full",
+                            "reused_existing": not _was_created,
+                            "existing_status": _existing_session.get("current_status") if not _was_created else None,
+                            "existing_phase": _existing_session.get("current_phase") if not _was_created else None,
+                        })
+                        if not _was_created:
+                            # Dedup hit — redirect to existing session, don't re-run pipeline
+                            return
+                except SessionServiceError as _sess_exc:
+                    # HYBRID rule: session layer failure must NOT block the pipeline.
+                    logger.warning(f"[AGENTIC STREAM] Session creation failed (non-fatal): {_sess_exc}")
+                    session_id = None
+                except Exception as _sess_exc:
+                    logger.warning(f"[AGENTIC STREAM] Session creation raised (non-fatal): {_sess_exc}")
+                    session_id = None
             
             # Multi-intent execution
             if len(intents) > 1:
-                logger.info(f"[AGENTIC STREAM] 🔄 MULTI-INTENT: Executing {len(intents)} agents sequentially...")
+                logger.info(f"[AGENTIC STREAM] MULTI-INTENT: Executing {len(intents)} agents sequentially...")
                 
                 await stream.emit(agent_event_stream.AgentEventType.ROUTING, {
                     "message": f"Detected multi-intent query ({len(intents)} actions). Processing sequentially...",
@@ -1313,7 +1775,9 @@ async def execute_agentic_request_stream(request: AgenticRequest, current_user: 
                             print(f"[STREAM - Intent {idx}] Agent locked to '{request.agent_type}' — forcing agentic path")
                             intent_data_source = "agentic"
                         else:
-                            odoo_result = _build_odoo_data_result(request.request, intent_query_type, intent.get("filters", {}))
+                            odoo_result = await asyncio.get_event_loop().run_in_executor(
+                                None, _build_odoo_data_result, request.request, intent_query_type, intent.get("filters", {})
+                            )
                             all_results.append(_attach_intent_metadata(
                                 odoo_result.get("result", {}),
                                 intent_query_type=intent_query_type,
@@ -1342,6 +1806,7 @@ async def execute_agentic_request_stream(request: AgenticRequest, current_user: 
                             "mode": "orchestrated",
                             "event_stream": stream,
                             "request_id": request_id,
+                            "session_id": session_id,  # Layer 1: observer session (None for non-P2P)
                         }
                         intent_result = await orch.execute(context)
                         all_results.append(_attach_intent_metadata(
@@ -1423,12 +1888,12 @@ async def execute_agentic_request_stream(request: AgenticRequest, current_user: 
             enriched_pr_data = _hydrate_pr_data_from_workflow(
                 _enrich_pr_data_from_filters(normalized_pr_data, intent_filters)
             )
-            print(f"[STREAM] 📦 Enriched pr_data: {enriched_pr_data}")
+            logger.info(f"[STREAM] Enriched pr_data: {enriched_pr_data}")
 
             # ── Early intercepts (apply regardless of data_source classification) ──
             # Multi-vendor risk: always run helper, even when LLM classifies as agentic RISK
             if re.search(r"\b(risk|risks)\b.{0,40}\b(all\s+vendors?|each\s+vendor|vendors?\s+all|across\s+vendors?)\b|\ball\s+vendors?\b.{0,40}\b(risk|risks)\b", request.request, re.I):
-                print("[STREAM] 🔍 Multi-vendor risk comparison detected — running comparison helper")
+                logger.info("[STREAM] Multi-vendor risk comparison detected — running comparison helper")
                 await stream.emit(agent_event_stream.AgentEventType.ROUTING, {
                     "message": "Detected multi-vendor risk comparison request. Running risk assessment for all vendors...",
                     "query_type": "RISK:VENDOR_COMPARISON"
@@ -1446,7 +1911,7 @@ async def execute_agentic_request_stream(request: AgenticRequest, current_user: 
 
             # Vendor recommendation redirect
             if data_source == "odoo" and normalize_odoo_query_type(query_type) == "vendors" and re.search(r"\b(top|best|recommend|suggest|rank|score)\b", request.request, re.I):
-                print("[STREAM] 🔁 Redirecting vendor list to VendorSelectionAgent")
+                logger.info("[STREAM] Redirecting vendor list to VendorSelectionAgent")
                 data_source = "agentic"
                 query_type = "VENDOR"
 
@@ -1456,7 +1921,9 @@ async def execute_agentic_request_stream(request: AgenticRequest, current_user: 
                     "query_type": normalize_odoo_query_type(query_type)
                 })
 
-                odoo_result = _build_odoo_data_result(request.request, query_type, intents[0].get("filters", {}))
+                odoo_result = await asyncio.get_event_loop().run_in_executor(
+                    None, _build_odoo_data_result, request.request, query_type, intents[0].get("filters", {})
+                )
                 await stream.emit_complete({
                     "status": odoo_result.get("status", "completed"),
                     "agent": odoo_result.get("agent", "OdooDataService"),
@@ -1469,7 +1936,7 @@ async def execute_agentic_request_stream(request: AgenticRequest, current_user: 
             
             # General/greeting queries — return a friendly response without invoking agents
             if data_source == "general" or query_type.upper() == "GENERAL":
-                logger.info("[AGENTIC STREAM] 💬 General/greeting query detected — returning friendly response")
+                logger.info("[AGENTIC STREAM] General/greeting query detected — returning friendly response")
                 await stream.emit(agent_event_stream.AgentEventType.ROUTING, {
                     "message": "General query detected.",
                     "query_type": "GENERAL"
@@ -1507,6 +1974,7 @@ async def execute_agentic_request_stream(request: AgenticRequest, current_user: 
                 "mode": "orchestrated",
                 "event_stream": stream,  # Pass stream to agents
                 "request_id": request_id,
+                "session_id": session_id,  # Layer 1: observer session (None for non-P2P)
             }
             
             # Event 3: Routing
@@ -1516,11 +1984,48 @@ async def execute_agentic_request_stream(request: AgenticRequest, current_user: 
             })
             
             # Execute through orchestrator
+            logger.info(f"[AGENTIC STREAM] Executing orchestrator with query_type={query_type}, pr_data_keys={list(enriched_pr_data.keys())}")
             result = await orch.execute(context)
-            
+            logger.info(f"[AGENTIC STREAM] Orchestrator returned: status={result.get('status') if isinstance(result, dict) else 'N/A'}, agent={result.get('agent') if isinstance(result, dict) else 'N/A'}, result_keys={list(result.get('result', {}).keys()) if isinstance(result, dict) and isinstance(result.get('result'), dict) else 'N/A'}")
+
             clean_result = clean_for_json(result)
-            
-            # Event: Complete 
+
+            # ── P2P_FULL workflow: emit specialized complete event ──
+            orch_result_raw = clean_result.get("result", {})
+            if isinstance(orch_result_raw, dict) and orch_result_raw.get("workflow_type") == "P2P_FULL":
+                p2p_data = _build_p2p_response(orch_result_raw)
+                await stream.emit_complete({
+                    "status": orch_result_raw.get("status", "in_progress"),
+                    "agent": "P2POrchestrator",
+                    "agent_name": "P2POrchestrator",
+                    "result": p2p_data,
+                    "agents_invoked": orch_result_raw.get("agents_invoked", []),
+                    "data_source": "agentic",
+                    "query_type": "P2P_FULL",
+                    "workflow_type": "P2P_FULL",
+                    "session_id": session_id,  # Layer 1: execution session id (None if creation failed)
+                    "summary": p2p_data.get("summary", ""),
+                    "message": p2p_data.get("summary", ""),
+                    "pr_number": p2p_data.get("pr_number"),
+                    "po_number": p2p_data.get("po_number"),
+                    "vendor_name": p2p_data.get("vendor_name"),
+                    "total_amount": p2p_data.get("total_amount"),
+                    "human_action_required": p2p_data.get("human_action_required"),
+                    "suggested_next_actions": p2p_data.get("suggested_next_actions", []),
+                    "actions_completed": p2p_data.get("actions_completed", []),
+                    "department": enriched_pr_data.get("department", ""),
+                    "budget": enriched_pr_data.get("budget", 0),
+                    "product_name": enriched_pr_data.get("product_name", ""),
+                    "quantity": enriched_pr_data.get("quantity", 0),
+                    # Dev Spec 2.0 gap fields
+                    "warnings": p2p_data.get("warnings", []),
+                    "gap_alerts": p2p_data.get("gap_alerts", {}),
+                    "pending_exceptions": p2p_data.get("pending_exceptions", []),
+                    "workflow_run_id": p2p_data.get("workflow_run_id", ""),
+                })
+                return
+
+            # Event: Complete
             # Extract primary_result from orchestrator response
             # Orchestrator wraps result in: { status, agent: "Orchestrator", decision, result: { primary_result, secondary_results, ... } }
             orch_inner = clean_result.get("result", {}) if isinstance(clean_result.get("result"), dict) else {}
@@ -1536,9 +2041,11 @@ async def execute_agentic_request_stream(request: AgenticRequest, current_user: 
             # Get agent name from the actual specialized agent (not Orchestrator wrapper)
             actual_agent = primary_result.get("agent", clean_result.get("agent", "Unknown"))
             
-            await stream.emit_complete({
+            # Emit business-enriched complete event with full agent result data
+            complete_payload = {
                 "status": primary_result.get("status", "completed"),
                 "agent": actual_agent,
+                "agent_name": actual_agent,
                 "result": {
                     "primary_result": primary_result,
                     "secondary_results": orch_inner.get("secondary_results", []),
@@ -1548,17 +2055,41 @@ async def execute_agentic_request_stream(request: AgenticRequest, current_user: 
                 "agents_invoked": list(agents_invoked) if agents_invoked else [],
                 "data_source": classification.get("data_source", "agentic"),
                 "query_type": query_type,
-            })
+                # Pass full result data for business summary generation
+                "department": enriched_pr_data.get("department", ""),
+                "budget": enriched_pr_data.get("budget", 0),
+                "product_name": enriched_pr_data.get("product_name", ""),
+                "quantity": enriched_pr_data.get("quantity", 0),
+            }
+            # Merge agent-specific data for richer business summaries
+            if isinstance(primary_result, dict):
+                for key in ["budget_verified", "available_budget", "requested_amount",
+                            "vendor_name", "winning_vendor", "risk_level", "confidence",
+                            "pr_number", "po_number", "rfq_number", "rtv_number",
+                            "amendment_number", "score", "pass_fail", "action",
+                            "message", "next_suggestions",
+                            "workflow_type", "workflow_run_id", "top_vendor_options",
+                            "awaiting_vendor_confirmation", "actions_completed",
+                            "current_step", "human_action_required",
+                            "suggested_next_actions", "total_amount"]:
+                    # Use 'is not None' checks instead of 'or' to avoid swallowing
+                    # falsy-but-valid values like False, 0, or empty lists
+                    val = primary_result.get(key)
+                    if val is None and isinstance(nested_result, dict):
+                        val = nested_result.get(key)
+                    if val is not None:
+                        complete_payload[key] = val
+
+            await stream.emit_complete(complete_payload)
             
         except Exception as e:
-            logger.error(f"[AGENTIC STREAM] ❌ Error: {e}")
+            logger.error(f"[AGENTIC STREAM] Error: {e}")
             await stream.emit_error(str(e), {"request_id": request_id})
         finally:
             # Cleanup after stream completes
             agent_event_stream.cleanup_stream(request_id)
     
     # Start execution in background
-    import asyncio
     asyncio.create_task(execute_with_events())
     
     # Return SSE stream
@@ -1573,36 +2104,167 @@ async def execute_agentic_request_stream(request: AgenticRequest, current_user: 
     )
 
 
+class P2PResumeRequest(BaseModel):
+    """Resume a P2P workflow after human input (approval, vendor confirmation, GRN, QC, payment, etc.)."""
+    workflow_run_id: str
+    action: str              # "approve", "reject", "confirm_vendor", "confirm_grn", "override", "block",
+                             # "accept", "return_to_vendor", "accept_exception", "adjust", "reject_invoice",
+                             # "release_payment", "hold_payment", "continue", "escalate", "partial_accept"
+    pr_data: Optional[Dict[str, Any]] = None
+    human_input: Optional[Dict[str, Any]] = None
+
+
+@router.post("/p2p/resume")
+async def resume_p2p_workflow(request: P2PResumeRequest, current_user: dict = Depends(require_auth())):
+    """
+    Resume a paused P2P_FULL workflow after human decision.
+    Handles: vendor confirmation, approval, goods receipt.
+    Continues executing remaining steps until the next human gate or completion.
+    """
+    from backend.services.workflow_engine import (
+        get_workflow_status, resume_from_human, get_suggestions, generate_workflow_summary,
+    )
+
+    wf_id = request.workflow_run_id
+    status = get_workflow_status(wf_id)
+    if not status.get("success"):
+        raise HTTPException(status_code=404, detail=f"Workflow {wf_id} not found")
+
+    # Find the waiting_human task
+    waiting = [t for t in status.get("tasks", []) if t["status"] == "waiting_human"]
+    if not waiting:
+        raise HTTPException(status_code=400, detail="No tasks awaiting human input")
+
+    # Resume the first waiting task
+    task = waiting[0]
+    human_input = request.human_input or {}
+    human_input["action"] = request.action
+    human_input["approved_by"] = current_user.get("email", "unknown")
+
+    resume_result = resume_from_human(task["task_id"], human_input)
+    if not resume_result.get("success"):
+        raise HTTPException(status_code=500, detail=resume_result.get("error", "Resume failed"))
+
+    # After resuming, check if there are running tasks that need agent execution
+    # Re-invoke orchestrator to continue the P2P flow
+    orch = initialize_orchestrator_with_agents()
+    pr_data = request.pr_data or {}
+
+    # Add flags so _execute_full_p2p knows to skip already-completed gates
+    if request.action in ("approve", "approve_decision"):
+        pr_data["approved"] = True
+    if request.action in ("confirm_vendor",):
+        pr_data["vendor_confirmed"] = True
+    if request.action in ("confirm_grn",):
+        pr_data["grn_confirmed"] = True
+    if request.action in ("override",):
+        pr_data["policy_override"] = True
+    if request.action in ("accept", "partial_accept"):
+        pr_data["qc_accepted"] = True
+        pr_data["qc_partial"] = request.action == "partial_accept"
+    if request.action in ("return_to_vendor",):
+        pr_data["qc_returned"] = True
+    if request.action in ("accept_exception", "adjust"):
+        pr_data["exception_resolved"] = True
+    if request.action in ("release_payment",):
+        pr_data["payment_released"] = True
+    if request.action in ("hold_payment",):
+        pr_data["payment_held"] = True
+    if request.action in ("continue",):
+        pr_data["budget_threshold_approved"] = True
+    if request.action in ("escalate",):
+        pr_data["escalated"] = True
+
+    # Layer 1: look up the session row attached to this workflow_run_id (hybrid).
+    # If present, also surface the first pending gate so the orchestrator can
+    # resolve it via SessionService.resolve_gate (R13 idempotent).
+    resume_session_id: Optional[str] = None
+    resume_gate_id: Optional[str] = None
+    try:
+        _sess_row = SessionService.find_by_workflow_run(wf_id)
+        if _sess_row:
+            resume_session_id = _sess_row.get("session_id")
+            for _g in _sess_row.get("open_gates", []):
+                if _g.get("status") == "pending":
+                    resume_gate_id = _g.get("gate_id")
+                    break
+    except Exception as _sess_lookup_exc:
+        logger.warning(
+            "[P2P RESUME] session lookup failed (non-fatal in hybrid): %s",
+            _sess_lookup_exc,
+        )
+
+    # Continue execution via orchestrator resume
+    resume_context = {
+        "workflow_run_id": wf_id,
+        "input_context": {"request": f"Resume P2P workflow {wf_id}", "pr_data": pr_data},
+        "pr_data": pr_data,
+        "auto_approve": request.action in ("approve", "approve_decision"),
+        "auto_grn": request.action == "confirm_grn",
+        "action": request.action,
+        "human_input": request.human_input or {},
+        "session_id": resume_session_id,
+        "gate_id": resume_gate_id,
+        "user_id": current_user.get("email") or current_user.get("sub") or "anonymous",
+    }
+
+    try:
+        p2p_result = await orch._resume_p2p_workflow(resume_context)
+        if isinstance(p2p_result, dict) and p2p_result.get("workflow_type") == "P2P_FULL":
+            p2p_data = _build_p2p_response(p2p_result)
+            return AgenticResponse(
+                status=p2p_result.get("status", "in_progress"),
+                agent="P2POrchestrator",
+                result=p2p_data,
+                data_source="agentic",
+                query_type="P2P_FULL",
+                message=p2p_data.get("summary", ""),
+                data=p2p_data,
+            )
+        return AgenticResponse(
+            status=p2p_result.get("status", "completed"),
+            agent="P2POrchestrator",
+            result=p2p_result,
+            data_source="agentic",
+            query_type="P2P_FULL",
+            message=str(p2p_result.get("summary", "")),
+            data=p2p_result,
+        )
+    except Exception as e:
+        logger.error(f"[P2P RESUME] Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/budget/verify", response_model=AgenticResponse)
 async def verify_budget(request: AgenticRequest, current_user: dict = Depends(require_auth())):
     """
     Direct budget verification (bypass orchestrator).
-    
+
     Useful for testing individual agents.
     """
     print("\n" + "="*80)
-    print("[BUDGET VERIFY] 💰 Budget verification requested")
+    logger.info("[BUDGET VERIFY] Budget verification requested")
     print("="*80)
     try:
-        print(f"[BUDGET] 📥 Request: {request.request}")
-        print(f"[BUDGET] 📊 PR Data:")
+        logger.info(f"[BUDGET] Request: {request.request}")
+        logger.info(f"[BUDGET] PR Data:")
         print(f"[BUDGET]   - Department: {request.pr_data.get('department') if request.pr_data else 'N/A'}")
         print(f"[BUDGET]   - Budget: ${request.pr_data.get('budget', 0):,.2f}" if request.pr_data else "[BUDGET]   - Budget: $0")
         print(f"[BUDGET]   - Category: {request.pr_data.get('budget_category', 'N/A')}" if request.pr_data else "[BUDGET]   - Category: N/A")
         
-        print(f"[BUDGET] 🔧 Creating BudgetVerificationAgent...")
+        logger.info(f"[BUDGET] Creating BudgetVerificationAgent...")
         budget_agent = BudgetVerificationAgent()
-        print(f"[BUDGET] ✅ Agent created")
+        logger.info(f"[BUDGET] Agent created")
         
         context = {
             "request": request.request,
             "pr_data": request.pr_data or {}
         }
         
-        print(f"[BUDGET] 🔄 Executing budget check...")
+        logger.info(f"[BUDGET] Executing budget check...")
         result = await budget_agent.execute(context)
         
-        print(f"[BUDGET] ✅ Verification complete:")
+        logger.info(f"[BUDGET] Verification complete:")
         print(f"[BUDGET]   - Status: {result.get('status', 'completed')}")
         print(f"[BUDGET]   - Decision: {result.get('decision', {}).get('action', 'N/A')}")
         print(f"[BUDGET]   - Confidence: {result.get('decision', {}).get('confidence', 0):.2f}")
@@ -1616,9 +2278,9 @@ async def verify_budget(request: AgenticRequest, current_user: dict = Depends(re
         )
         
     except Exception as e:
-        print(f"[BUDGET] ❌ ERROR: {str(e)}")
+        logger.info(f"[BUDGET] ERROR: {str(e)}")
         import traceback
-        print(f"[BUDGET] 📋 Traceback:\n{traceback.format_exc()}")
+        logger.info(f"[BUDGET] Traceback:\n{traceback.format_exc()}")
         print("="*80 + "\n")
         logger.error(f"Budget verification failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1632,28 +2294,28 @@ async def route_approval(request: AgenticRequest, current_user: dict = Depends(r
     Direct access to ApprovalRoutingAgent for testing.
     """
     print("\n" + "="*80)
-    print("[APPROVAL ROUTE] 📋 Approval routing requested")
+    logger.info("[APPROVAL ROUTE] Approval routing requested")
     print("="*80)
     try:
-        print(f"[APPROVAL] 📥 Request: {request.request}")
-        print(f"[APPROVAL] 📊 PR Data:")
+        logger.info(f"[APPROVAL] Request: {request.request}")
+        logger.info(f"[APPROVAL] PR Data:")
         print(f"[APPROVAL]   - Department: {request.pr_data.get('department') if request.pr_data else 'N/A'}")
         print(f"[APPROVAL]   - Budget: ${request.pr_data.get('budget', 0):,.2f}" if request.pr_data else "[APPROVAL]   - Budget: $0")
         print(f"[APPROVAL]   - PR Number: {request.pr_data.get('pr_number', 'N/A')}" if request.pr_data else "[APPROVAL]   - PR Number: N/A")
         
-        print(f"[APPROVAL] 🔧 Creating ApprovalRoutingAgent...")
+        logger.info(f"[APPROVAL] Creating ApprovalRoutingAgent...")
         approval_agent = ApprovalRoutingAgent()
-        print(f"[APPROVAL] ✅ Agent created")
+        logger.info(f"[APPROVAL] Agent created")
         
         context = {
             "request": request.request,
             "pr_data": request.pr_data or {}
         }
         
-        print(f"[APPROVAL] 🔄 Determining approval chain...")
+        logger.info(f"[APPROVAL] Determining approval chain...")
         result = await approval_agent.execute(context)
         
-        print(f"[APPROVAL] ✅ Routing complete:")
+        logger.info(f"[APPROVAL] Routing complete:")
         print(f"[APPROVAL]   - Status: {result.get('status', 'completed')}")
         print(f"[APPROVAL]   - Approvers: {len(result.get('result', {}).get('assigned_approvers', []))}")
         print(f"[APPROVAL]   - Level: {result.get('result', {}).get('required_level', 'N/A')}")
@@ -1667,9 +2329,9 @@ async def route_approval(request: AgenticRequest, current_user: dict = Depends(r
         )
         
     except Exception as e:
-        print(f"[APPROVAL] ❌ ERROR: {str(e)}")
+        logger.info(f"[APPROVAL] ERROR: {str(e)}")
         import traceback
-        print(f"[APPROVAL] 📋 Traceback:\n{traceback.format_exc()}")
+        logger.info(f"[APPROVAL] Traceback:\n{traceback.format_exc()}")
         print("="*80 + "\n")
         logger.error(f"Approval routing failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1684,25 +2346,25 @@ async def recommend_vendor(request: AgenticRequest, current_user: dict = Depends
     Returns top 3 vendors scored on quality, price, delivery, and category match.
     """
     print("\n" + "="*80)
-    print("[VENDOR RECOMMEND] 🏪 Vendor recommendation requested")
+    logger.info("[VENDOR RECOMMEND] Vendor recommendation requested")
     print("="*80)
     try:
-        print(f"[VENDOR] 📥 Request: {request.request}")
-        print(f"[VENDOR] 📊 PR Data: Category={request.pr_data.get('category', 'N/A') if request.pr_data else 'N/A'}, Budget=${request.pr_data.get('budget', 0):,.2f}" if request.pr_data else "[VENDOR] 📊 PR Data: None")
+        logger.info(f"[VENDOR] Request: {request.request}")
+        logger.info(f"[VENDOR] PR Data: Category={request.pr_data.get('category', 'N/A') if request.pr_data else 'N/A'}, Budget=${request.pr_data.get('budget', 0):,.2f}" if request.pr_data else "[VENDOR] PR Data: None")
         
-        print(f"[VENDOR] 🔧 Creating VendorSelectionAgent...")
+        logger.info(f"[VENDOR] Creating VendorSelectionAgent...")
         vendor_agent = VendorSelectionAgent()
-        print(f"[VENDOR] ✅ Agent created")
+        logger.info(f"[VENDOR] Agent created")
         
         context = {
             "request": request.request,
             "pr_data": request.pr_data or {}
         }
         
-        print(f"[VENDOR] 🔄 Scoring and ranking vendors...")
+        logger.info(f"[VENDOR] Scoring and ranking vendors...")
         result = await vendor_agent.execute(context)
         
-        print(f"[VENDOR] ✅ Recommendation complete:")
+        logger.info(f"[VENDOR] Recommendation complete:")
         print(f"[VENDOR]   - Status: {result.get('status', 'completed')}")
         print(f"[VENDOR]   - Top vendor: {result.get('result', {}).get('top_vendor', {}).get('name', 'N/A')}")
         print(f"[VENDOR]   - Score: {result.get('result', {}).get('top_vendor', {}).get('total_score', 0)}/100")
@@ -1716,9 +2378,9 @@ async def recommend_vendor(request: AgenticRequest, current_user: dict = Depends
         )
         
     except Exception as e:
-        print(f"[VENDOR] ❌ ERROR: {str(e)}")
+        logger.info(f"[VENDOR] ERROR: {str(e)}")
         import traceback
-        print(f"[VENDOR] 📋 Traceback:\n{traceback.format_exc()}")
+        logger.info(f"[VENDOR] Traceback:\n{traceback.format_exc()}")
         print("="*80 + "\n")
         logger.error(f"Vendor recommendation failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1734,25 +2396,25 @@ async def assess_risk(request: AgenticRequest, current_user: dict = Depends(requ
     Risk Levels: LOW (<30), MEDIUM (30-60), HIGH (60-80), CRITICAL (>80)
     """
     print("\n" + "="*80)
-    print("[RISK ASSESS] ⚠️  Risk assessment requested")
+    logger.info("[RISK ASSESS] ️  Risk assessment requested")
     print("="*80)
     try:
-        print(f"[RISK] 📥 Request: {request.request}")
-        print(f"[RISK] 📊 PR Data: Vendor={request.pr_data.get('vendor_name', 'N/A') if request.pr_data else 'N/A'}, Amount=${request.pr_data.get('budget', 0):,.2f}" if request.pr_data else "[RISK] 📊 PR Data: None")
+        logger.info(f"[RISK] Request: {request.request}")
+        logger.info(f"[RISK] PR Data: Vendor={request.pr_data.get('vendor_name', 'N/A') if request.pr_data else 'N/A'}, Amount=${request.pr_data.get('budget', 0):,.2f}" if request.pr_data else "[RISK] PR Data: None")
         
-        print(f"[RISK] 🔧 Creating RiskAssessmentAgent...")
+        logger.info(f"[RISK] Creating RiskAssessmentAgent...")
         risk_agent = RiskAssessmentAgent()
-        print(f"[RISK] ✅ Agent created")
+        logger.info(f"[RISK] Agent created")
         
         context = {
             "request": request.request,
             "pr_data": request.pr_data or {}
         }
         
-        print(f"[RISK] 🔄 Analyzing 4 risk dimensions...")
+        logger.info(f"[RISK] Analyzing 4 risk dimensions...")
         result = await risk_agent.execute(context)
         
-        print(f"[RISK] ✅ Assessment complete:")
+        logger.info(f"[RISK] Assessment complete:")
         print(f"[RISK]   - Status: {result.get('status', 'completed')}")
         print(f"[RISK]   - Risk Level: {result.get('result', {}).get('risk_level', 'N/A')}")
         print(f"[RISK]   - Score: {result.get('result', {}).get('risk_score', 0)}/100")
@@ -1766,9 +2428,9 @@ async def assess_risk(request: AgenticRequest, current_user: dict = Depends(requ
         )
         
     except Exception as e:
-        print(f"[RISK] ❌ ERROR: {str(e)}")
+        logger.info(f"[RISK] ERROR: {str(e)}")
         import traceback
-        print(f"[RISK] 📋 Traceback:\n{traceback.format_exc()}")
+        logger.info(f"[RISK] Traceback:\n{traceback.format_exc()}")
         print("="*80 + "\n")
         logger.error(f"Risk assessment failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1784,26 +2446,26 @@ async def monitor_contract(request: AgenticRequest, current_user: dict = Depends
     Alert Levels: INFO, LOW, MEDIUM, HIGH, URGENT, CRITICAL
     """
     print("\n" + "="*80)
-    print("[CONTRACT MONITOR] 📝 Contract monitoring requested")
+    logger.info("[CONTRACT MONITOR] Contract monitoring requested")
     print("="*80)
-    print(f"[CONTRACT] 📥 Request: {request.request[:100] if len(request.request) > 100 else request.request}")
-    print(f"[CONTRACT] 📊 Contract Data: {request.pr_data}")
+    logger.info(f"[CONTRACT] Request: {request.request[:100] if len(request.request) > 100 else request.request}")
+    logger.info(f"[CONTRACT] Contract Data: {request.pr_data}")
     
     try:
-        print(f"[CONTRACT] 🔧 Creating ContractMonitoringAgent...")
+        logger.info(f"[CONTRACT] Creating ContractMonitoringAgent...")
         from backend.agents.contract_monitoring import ContractMonitoringAgent
         contract_agent = ContractMonitoringAgent()
-        print(f"[CONTRACT] ✅ Agent created")
+        logger.info(f"[CONTRACT] Agent created")
         
         context = {
             "request": request.request,
             "contract_data": request.pr_data or {}
         }
         
-        print(f"[CONTRACT] 🔄 Executing contract monitoring...")
+        logger.info(f"[CONTRACT] Executing contract monitoring...")
         result = await contract_agent.execute(context)
         
-        print(f"[CONTRACT] ✅ Monitoring complete:")
+        logger.info(f"[CONTRACT] Monitoring complete:")
         print(f"[CONTRACT]   - Status: {result.get('status', 'completed')}")
         print(f"[CONTRACT]   - Has Decision: {result.get('decision') is not None}")
         print(f"[CONTRACT]   - Has Result: {result.get('result') is not None}")
@@ -1817,9 +2479,9 @@ async def monitor_contract(request: AgenticRequest, current_user: dict = Depends
         )
         
     except Exception as e:
-        print(f"[CONTRACT] ❌ ERROR: {str(e)}")
+        logger.info(f"[CONTRACT] ERROR: {str(e)}")
         import traceback
-        print(f"[CONTRACT] 📋 Traceback:\n{traceback.format_exc()}")
+        logger.info(f"[CONTRACT] Traceback:\n{traceback.format_exc()}")
         print("="*80 + "\n")
         logger.error(f"Contract monitoring failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1835,26 +2497,26 @@ async def evaluate_supplier(request: AgenticRequest, current_user: dict = Depend
     Performance Levels: Excellent (90-100), Good (75-89), Fair (60-74), Poor (40-59), Critical (0-39)
     """
     print("\n" + "="*80)
-    print("[SUPPLIER EVALUATE] 📊 Supplier performance evaluation requested")
+    logger.info("[SUPPLIER EVALUATE] Supplier performance evaluation requested")
     print("="*80)
-    print(f"[SUPPLIER] 📥 Request: {request.request[:100] if len(request.request) > 100 else request.request}")
-    print(f"[SUPPLIER] 📊 Supplier Data: {request.pr_data}")
+    logger.info(f"[SUPPLIER] Request: {request.request[:100] if len(request.request) > 100 else request.request}")
+    logger.info(f"[SUPPLIER] Supplier Data: {request.pr_data}")
     
     try:
-        print(f"[SUPPLIER] 🔧 Creating SupplierPerformanceAgent...")
+        logger.info(f"[SUPPLIER] Creating SupplierPerformanceAgent...")
         from backend.agents.supplier_performance import SupplierPerformanceAgent
         supplier_agent = SupplierPerformanceAgent()
-        print(f"[SUPPLIER] ✅ Agent created")
+        logger.info(f"[SUPPLIER] Agent created")
         
         context = {
             "request": request.request,
             "supplier_data": request.pr_data or {}
         }
         
-        print(f"[SUPPLIER] 🔄 Evaluating supplier across 4 dimensions...")
+        logger.info(f"[SUPPLIER] Evaluating supplier across 4 dimensions...")
         result = await supplier_agent.execute(context)
         
-        print(f"[SUPPLIER] ✅ Evaluation complete:")
+        logger.info(f"[SUPPLIER] Evaluation complete:")
         print(f"[SUPPLIER]   - Status: {result.get('status', 'completed')}")
         print(f"[SUPPLIER]   - Has Decision: {result.get('decision') is not None}")
         print(f"[SUPPLIER]   - Has Result: {result.get('result') is not None}")
@@ -1868,9 +2530,9 @@ async def evaluate_supplier(request: AgenticRequest, current_user: dict = Depend
         )
         
     except Exception as e:
-        print(f"[SUPPLIER] ❌ ERROR: {str(e)}")
+        logger.info(f"[SUPPLIER] ERROR: {str(e)}")
         import traceback
-        print(f"[SUPPLIER] 📋 Traceback:\n{traceback.format_exc()}")
+        logger.info(f"[SUPPLIER] Traceback:\n{traceback.format_exc()}")
         print("="*80 + "\n")
         logger.error(f"Supplier evaluation failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1887,26 +2549,26 @@ async def analyze_price(request: AgenticRequest, current_user: dict = Depends(re
     Price Levels: Excellent (<-10%), Competitive (±10%), High (10-20%), Very High (>20%)
     """
     print("\n" + "="*80)
-    print("[PRICE ANALYZE] 💰 Price analysis requested")
+    logger.info("[PRICE ANALYZE] Price analysis requested")
     print("="*80)
-    print(f"[PRICE] 📥 Request: {request.request[:100] if len(request.request) > 100 else request.request}")
-    print(f"[PRICE] 📊 PR Data: {request.pr_data}")
+    logger.info(f"[PRICE] Request: {request.request[:100] if len(request.request) > 100 else request.request}")
+    logger.info(f"[PRICE] PR Data: {request.pr_data}")
     
     try:
-        print(f"[PRICE] 🔧 Creating PriceAnalysisAgent...")
+        logger.info(f"[PRICE] Creating PriceAnalysisAgent...")
         from backend.agents.price_analysis import PriceAnalysisAgent
         price_agent = PriceAnalysisAgent()
-        print(f"[PRICE] ✅ Agent created")
+        logger.info(f"[PRICE] Agent created")
         
         context = {
             "request": request.request,
             "pr_data": request.pr_data or {}
         }
         
-        print(f"[PRICE] 🔄 Analyzing price competitiveness...")
+        logger.info(f"[PRICE] Analyzing price competitiveness...")
         result = await price_agent.execute(context)
         
-        print(f"[PRICE] ✅ Analysis complete:")
+        logger.info(f"[PRICE] Analysis complete:")
         print(f"[PRICE]   - Status: {result.get('status', 'completed')}")
         print(f"[PRICE]   - Has Decision: {result.get('decision') is not None}")
         print(f"[PRICE]   - Has Result: {result.get('result') is not None}")
@@ -1920,9 +2582,9 @@ async def analyze_price(request: AgenticRequest, current_user: dict = Depends(re
         )
         
     except Exception as e:
-        print(f"[PRICE] ❌ ERROR: {str(e)}")
+        logger.info(f"[PRICE] ERROR: {str(e)}")
         import traceback
-        print(f"[PRICE] 📋 Traceback:\n{traceback.format_exc()}")
+        logger.info(f"[PRICE] Traceback:\n{traceback.format_exc()}")
         print("="*80 + "\n")
         logger.error(f"Price analysis failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1938,26 +2600,26 @@ async def check_compliance(request: AgenticRequest, current_user: dict = Depends
     Compliance Levels: COMPLIANT (>=90), MINOR_ISSUE (70-89), MAJOR_VIOLATION (50-69), BLOCKED (<50)
     """
     print("\n" + "="*80)
-    print("[COMPLIANCE CHECK] ⚖️ Compliance check requested")
+    logger.info("[COMPLIANCE CHECK] ️ Compliance check requested")
     print("="*80)
-    print(f"[COMPLIANCE] 📥 Request: {request.request[:100] if len(request.request) > 100 else request.request}")
-    print(f"[COMPLIANCE] 📊 PR Data: {request.pr_data}")
+    logger.info(f"[COMPLIANCE] Request: {request.request[:100] if len(request.request) > 100 else request.request}")
+    logger.info(f"[COMPLIANCE] PR Data: {request.pr_data}")
     
     try:
-        print(f"[COMPLIANCE] 🔧 Creating ComplianceCheckAgent...")
+        logger.info(f"[COMPLIANCE] Creating ComplianceCheckAgent...")
         from backend.agents.compliance_check import ComplianceCheckAgent
         compliance_agent = ComplianceCheckAgent()
-        print(f"[COMPLIANCE] ✅ Agent created")
+        logger.info(f"[COMPLIANCE] Agent created")
         
         context = {
             "request": request.request,
             "pr_data": request.pr_data or {}
         }
         
-        print(f"[COMPLIANCE] 🔄 Validating against company policies...")
+        logger.info(f"[COMPLIANCE] Validating against company policies...")
         result = await compliance_agent.execute(context)
         
-        print(f"[COMPLIANCE] ✅ Check complete:")
+        logger.info(f"[COMPLIANCE] Check complete:")
         print(f"[COMPLIANCE]   - Status: {result.get('status', 'completed')}")
         print(f"[COMPLIANCE]   - Has Decision: {result.get('decision') is not None}")
         print(f"[COMPLIANCE]   - Has Result: {result.get('result') is not None}")
@@ -1971,9 +2633,9 @@ async def check_compliance(request: AgenticRequest, current_user: dict = Depends
         )
         
     except Exception as e:
-        print(f"[COMPLIANCE] ❌ ERROR: {str(e)}")
+        logger.info(f"[COMPLIANCE] ERROR: {str(e)}")
         import traceback
-        print(f"[COMPLIANCE] 📋 Traceback:\n{traceback.format_exc()}")
+        logger.info(f"[COMPLIANCE] Traceback:\n{traceback.format_exc()}")
         print("="*80 + "\n")
         logger.error(f"Compliance check failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1989,26 +2651,26 @@ async def match_invoice(request: AgenticRequest, current_user: dict = Depends(re
     Auto-approves if variance <= 5%, flags for review if 5-10%, blocks if > 10%.
     """
     print("\n" + "="*80)
-    print("[INVOICE MATCH] 🧾 3-way invoice matching requested")
+    logger.info("[INVOICE MATCH] 3-way invoice matching requested")
     print("="*80)
-    print(f"[INVOICE] 📥 Request: {request.request[:100] if len(request.request) > 100 else request.request}")
-    print(f"[INVOICE] 📊 Invoice Data: {request.pr_data}")
+    logger.info(f"[INVOICE] Request: {request.request[:100] if len(request.request) > 100 else request.request}")
+    logger.info(f"[INVOICE] Invoice Data: {request.pr_data}")
     
     try:
-        print(f"[INVOICE] 🔧 Creating InvoiceMatchingAgent...")
+        logger.info(f"[INVOICE] Creating InvoiceMatchingAgent...")
         from backend.agents.invoice_matching import InvoiceMatchingAgent
         invoice_agent = InvoiceMatchingAgent()
-        print(f"[INVOICE] ✅ Agent created")
+        logger.info(f"[INVOICE] Agent created")
         
         context = {
             "request": request.request,
             **request.pr_data  # Invoice data passed directly
         }
         
-        print(f"[INVOICE] 🔄 Performing 3-way matching (PO + Receipt + Invoice)...")
+        logger.info(f"[INVOICE] Performing 3-way matching (PO + Receipt + Invoice)...")
         result = await invoice_agent.execute(context)
         
-        print(f"[INVOICE] ✅ Matching complete:")
+        logger.info(f"[INVOICE] Matching complete:")
         print(f"[INVOICE]   - Status: {result.get('status', 'completed')}")
         print(f"[INVOICE]   - Has Decision: {result.get('decision') is not None}")
         print(f"[INVOICE]   - Has Result: {result.get('result') is not None}")
@@ -2022,9 +2684,9 @@ async def match_invoice(request: AgenticRequest, current_user: dict = Depends(re
         )
         
     except Exception as e:
-        print(f"[INVOICE] ❌ ERROR: {str(e)}")
+        logger.info(f"[INVOICE] ERROR: {str(e)}")
         import traceback
-        print(f"[INVOICE] 📋 Traceback:\n{traceback.format_exc()}")
+        logger.info(f"[INVOICE] Traceback:\n{traceback.format_exc()}")
         print("="*80 + "\n")
         logger.error(f"Invoice matching failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -2040,26 +2702,26 @@ async def analyze_spend(request: AgenticRequest, current_user: dict = Depends(re
     Identifies savings opportunities: volume consolidation, price standardization, vendor negotiation.
     """
     print("\n" + "="*80)
-    print("[SPEND ANALYZE] 📊 Company spending analysis requested")
+    logger.info("[SPEND ANALYZE] Company spending analysis requested")
     print("="*80)
-    print(f"[SPEND] 📥 Request: {request.request[:100] if len(request.request) > 100 else request.request}")
-    print(f"[SPEND] 📊 Analysis Parameters: {request.pr_data}")
+    logger.info(f"[SPEND] Request: {request.request[:100] if len(request.request) > 100 else request.request}")
+    logger.info(f"[SPEND] Analysis Parameters: {request.pr_data}")
     
     try:
-        print(f"[SPEND] 🔧 Creating SpendAnalyticsAgent...")
+        logger.info(f"[SPEND] Creating SpendAnalyticsAgent...")
         from backend.agents.spend_analytics import SpendAnalyticsAgent
         spend_agent = SpendAnalyticsAgent()
-        print(f"[SPEND] ✅ Agent created")
+        logger.info(f"[SPEND] Agent created")
         
         context = {
             "request": request.request,
             **(request.pr_data or {})  # Analysis parameters
         }
         
-        print(f"[SPEND] 🔄 Analyzing spending patterns and identifying savings...")
+        logger.info(f"[SPEND] Analyzing spending patterns and identifying savings...")
         result = await spend_agent.execute(context)
         
-        print(f"[SPEND] ✅ Analysis complete:")
+        logger.info(f"[SPEND] Analysis complete:")
         print(f"[SPEND]   - Status: {result.get('status', 'completed')}")
         print(f"[SPEND]   - Has Decision: {result.get('decision') is not None}")
         print(f"[SPEND]   - Has Result: {result.get('result') is not None}")
@@ -2073,9 +2735,9 @@ async def analyze_spend(request: AgenticRequest, current_user: dict = Depends(re
         )
         
     except Exception as e:
-        print(f"[SPEND] ❌ ERROR: {str(e)}")
+        logger.info(f"[SPEND] ERROR: {str(e)}")
         import traceback
-        print(f"[SPEND] 📋 Traceback:\n{traceback.format_exc()}")
+        logger.info(f"[SPEND] Traceback:\n{traceback.format_exc()}")
         print("="*80 + "\n")
         logger.error(f"Spend analysis failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -2092,26 +2754,26 @@ async def check_inventory(request: AgenticRequest, current_user: dict = Depends(
     Urgency levels: CRITICAL (<=10 units), HIGH (<=25), MEDIUM (<=50).
     """
     print("\n" + "="*80)
-    print("[INVENTORY CHECK] 📦 Inventory monitoring requested")
+    logger.info("[INVENTORY CHECK] Inventory monitoring requested")
     print("="*80)
-    print(f"[INVENTORY] 📥 Request: {request.request[:100] if len(request.request) > 100 else request.request}")
-    print(f"[INVENTORY] 📊 Check Parameters: {request.pr_data}")
+    logger.info(f"[INVENTORY] Request: {request.request[:100] if len(request.request) > 100 else request.request}")
+    logger.info(f"[INVENTORY] Check Parameters: {request.pr_data}")
     
     try:
-        print(f"[INVENTORY] 🔧 Creating InventoryCheckAgent...")
+        logger.info(f"[INVENTORY] Creating InventoryCheckAgent...")
         from backend.agents.inventory_check import InventoryCheckAgent
         inventory_agent = InventoryCheckAgent()
-        print(f"[INVENTORY] ✅ Agent created")
+        logger.info(f"[INVENTORY] Agent created")
         
         context = {
             "request": request.request,
             **(request.pr_data or {})  # Check parameters
         }
         
-        print(f"[INVENTORY] 🔄 Scanning inventory levels and creating replenishment PRs...")
+        logger.info(f"[INVENTORY] Scanning inventory levels and creating replenishment PRs...")
         result = await inventory_agent.execute(context)
         
-        print(f"[INVENTORY] ✅ Check complete:")
+        logger.info(f"[INVENTORY] Check complete:")
         print(f"[INVENTORY]   - Status: {result.get('status', 'completed')}")
         print(f"[INVENTORY]   - Has Decision: {result.get('decision') is not None}")
         print(f"[INVENTORY]   - Has Result: {result.get('result') is not None}")
@@ -2125,9 +2787,9 @@ async def check_inventory(request: AgenticRequest, current_user: dict = Depends(
         )
         
     except Exception as e:
-        print(f"[INVENTORY] ❌ ERROR: {str(e)}")
+        logger.info(f"[INVENTORY] ERROR: {str(e)}")
         import traceback
-        print(f"[INVENTORY] 📋 Traceback:\n{traceback.format_exc()}")
+        logger.info(f"[INVENTORY] Traceback:\n{traceback.format_exc()}")
         print("="*80 + "\n")
         logger.error(f"Inventory check failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -2546,11 +3208,85 @@ async def get_approval_workflows(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+async def _bridge_approval_to_session(
+    pr_number: str,
+    action: str,
+    payload: dict,
+    background_tasks: BackgroundTasks,
+) -> None:
+    """
+    Bridge: when an approval decision comes from MyApprovalsPage (or any caller
+    of the legacy /approval-workflows/:pr/approve|reject endpoints), check if
+    there is an active session with an open approval gate for this PR.  If so,
+    resolve the gate and spawn the orchestrator resume — exactly what
+    /api/sessions/:id/resume does, but triggered automatically.
+
+    This is a non-fatal side-effect: if anything fails, the approval table
+    update has already committed and the user still sees success.
+    """
+    try:
+        from backend.services.session_service import SessionService
+        pending_gates = SessionService.list_pending_gates(gate_type="approval")
+        matched_gate = None
+        matched_session_id = None
+        for g in pending_gates:
+            gate_ref = g.get("gate_ref") or {}
+            if gate_ref.get("pr_number") == pr_number:
+                matched_gate = g
+                matched_session_id = g.get("session_id")
+                break
+        if not matched_gate or not matched_session_id:
+            return
+
+        gate_id = matched_gate.get("gate_id")
+        import uuid
+        gate_resolution_id = str(uuid.uuid4())
+
+        logger.info(
+            f"[APPROVAL-BRIDGE] Found session {matched_session_id[:8]} with approval gate "
+            f"{gate_id} for PR {pr_number}. Resolving gate and spawning orchestrator."
+        )
+
+        # Resolve the gate
+        SessionService.resolve_gate(
+            gate_id=gate_id,
+            decision={"action": action, **payload},
+            resolved_by=payload.get("approver_email", "external"),
+            gate_resolution_id=gate_resolution_id,
+        )
+        SessionService.append_event(
+            session_id=matched_session_id,
+            event_type="gate_resolved",
+            actor=f"user:{payload.get('approver_email', 'external')}",
+            payload={"gate_id": gate_id, "action": action},
+        )
+
+        # Spawn orchestrator resume in background
+        from backend.routes.sessions import _run_orchestrator_resume
+        resume_context = {
+            "session_id": matched_session_id,
+            "gate_id": gate_id,
+            "gate_resolution_id": gate_resolution_id,
+            "action": action,
+            "human_input": payload,
+            "user_id": payload.get("approver_email", "external"),
+        }
+        background_tasks.add_task(_run_orchestrator_resume, resume_context)
+
+        logger.info(
+            f"[APPROVAL-BRIDGE] Gate resolved + orchestrator resume queued for session "
+            f"{matched_session_id[:8]}"
+        )
+    except Exception as exc:
+        logger.warning(f"[APPROVAL-BRIDGE] Non-fatal bridge error for PR {pr_number}: {exc}")
+
+
 @router.post("/approval-workflows/{pr_number}/approve")
 async def approve_workflow_step(
     pr_number: str,
     body: ApproveStepRequest,
     request: Request,
+    background_tasks: BackgroundTasks,
     x_approver_email: str | None = Header(default=None, alias="X-Approver-Email"),
     x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
     current_user: dict = Depends(require_auth()),
@@ -2562,10 +3298,10 @@ async def approve_workflow_step(
     or marks workflow as completed if all steps are done.
     """
     logger.info("="*80)
-    logger.info(f"[APPROVAL ACTION] ✅ APPROVE Request")
-    logger.info(f"[APPROVAL ACTION] 📋 PR Number: {pr_number}")
-    logger.info(f"[APPROVAL ACTION] 👤 Approver: {body.approver_email}")
-    logger.info(f"[APPROVAL ACTION] 📝 Notes: {body.notes or 'None'}")
+    logger.info(f"[APPROVAL ACTION] APPROVE Request")
+    logger.info(f"[APPROVAL ACTION] PR Number: {pr_number}")
+    logger.info(f"[APPROVAL ACTION] Approver: {body.approver_email}")
+    logger.info(f"[APPROVAL ACTION] Notes: {body.notes or 'None'}")
     logger.info("="*80)
     
     try:
@@ -2574,7 +3310,7 @@ async def approve_workflow_step(
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         
         # Update the step
-        logger.info(f"[APPROVAL ACTION] 💾 Updating pr_approval_steps...")
+        logger.info(f"[APPROVAL ACTION] Updating pr_approval_steps...")
         cursor.execute("""
             UPDATE pr_approval_steps 
             SET status = 'approved', 
@@ -2588,16 +3324,16 @@ async def approve_workflow_step(
         
         step = cursor.fetchone()
         if not step:
-            logger.error(f"[APPROVAL ACTION] ❌ No pending step found for {body.approver_email} on {pr_number}")
+            logger.error(f"[APPROVAL ACTION] No pending step found for {body.approver_email} on {pr_number}")
             cursor.close()
 
             return_db_connection(conn)
             raise HTTPException(status_code=404, detail="No pending step found for this approver")
         
-        logger.info(f"[APPROVAL ACTION] ✅ Step approved: Level {step['approval_level']} by {step['approver_name']}")
+        logger.info(f"[APPROVAL ACTION] Step approved: Level {step['approval_level']} by {step['approver_name']}")
         
         # Check if more steps are pending
-        logger.info(f"[APPROVAL ACTION] 🔍 Checking remaining approval steps...")
+        logger.info(f"[APPROVAL ACTION] Checking remaining approval steps...")
         cursor.execute("""
             SELECT COUNT(*) as remaining 
             FROM pr_approval_steps 
@@ -2606,173 +3342,121 @@ async def approve_workflow_step(
         
         result = cursor.fetchone()
         remaining = result['remaining'] if result else 0
-        logger.info(f"[APPROVAL ACTION] 📊 Remaining steps: {remaining}")
+        logger.info(f"[APPROVAL ACTION] Remaining steps: {remaining}")
         
         if remaining == 0:
             # All steps approved - mark workflow as completed
-            logger.info(f"[APPROVAL ACTION] 🎉 ALL STEPS APPROVED - WORKFLOW COMPLETE!")
-            logger.info(f"[APPROVAL ACTION] 💾 Updating pr_approval_workflows status to 'completed'...")
+            logger.info(f"[APPROVAL ACTION] ALL STEPS APPROVED - WORKFLOW COMPLETE!")
+            logger.info(f"[APPROVAL ACTION] Updating pr_approval_workflows status to 'completed'...")
             cursor.execute("""
                 UPDATE pr_approval_workflows 
                 SET workflow_status = 'completed', updated_at = CURRENT_TIMESTAMP 
                 WHERE pr_number = %s
             """, (pr_number,))
-            logger.info(f"[APPROVAL ACTION] ✅ Workflow marked as completed")
+            logger.info(f"[APPROVAL ACTION] Workflow marked as completed")
             
-            # Get workflow details for PO creation
-            logger.info(f"[APPROVAL ACTION] 📋 Fetching workflow details for Odoo PO creation...")
+            # ── AUTO-CREATE PO FROM APPROVED PR (via adapter, works for ALL ERP modes) ──
+            logger.info(f"[APPROVAL] Fetching workflow details for PO creation...")
             cursor.execute("""
-                SELECT pr_number, department, total_amount, requester_name, request_data 
-                FROM pr_approval_workflows 
-                WHERE pr_number = %s
+                SELECT pr_number, department, total_amount, requester_name, request_data
+                FROM pr_approval_workflows WHERE pr_number = %s
             """, (pr_number,))
             workflow = cursor.fetchone()
-            
+
             if workflow:
-                logger.info(f"[APPROVAL ACTION] 🚀 TRIGGERING ODOO PO CREATION...")
-                logger.info(f"[APPROVAL ACTION] 📋 PR: {workflow['pr_number']}")
-                logger.info(f"[APPROVAL ACTION] 🏢 Department: {workflow['department']}")
-                logger.info(f"[APPROVAL ACTION] 💰 Amount: ${workflow['total_amount']:,.2f}")
-                logger.info(f"[APPROVAL ACTION] 👤 Requester: {workflow['requester_name']}")
-                
+                from backend.services.adapters.factory import get_adapter as _get_po_adapter
+                _po_adapter = _get_po_adapter()
+
+                request_data = workflow.get('request_data') or {}
+                context_payload = request_data.get('context', {}) if isinstance(request_data, dict) else {}
+                pr_payload = context_payload.get('raw_pr_data', {}) if isinstance(context_payload, dict) else {}
+
+                vendor_name = str(pr_payload.get('vendor_name', pr_payload.get('selected_vendor_name', ''))).strip()
+                product_name = str(pr_payload.get('product_name', pr_payload.get('category', 'Procurement Item'))).strip()
+                department = str(pr_payload.get('department', workflow.get('department', ''))).strip()
+
                 try:
-                    # Initialize Odoo client
-                    odoo = get_odoo_client()
-                    
-                    if not odoo.is_connected():
-                        logger.error(f"[APPROVAL ACTION] ❌ Odoo not connected - cannot create PO")
+                    quantity = int(pr_payload.get('quantity', 1))
+                except (TypeError, ValueError):
+                    quantity = 1
+                try:
+                    total_amount = float(workflow.get('total_amount', 0))
+                except (TypeError, ValueError):
+                    total_amount = 0
+                unit_price = total_amount / max(quantity, 1)
+
+                logger.info(f"[APPROVAL] Creating PO: vendor={vendor_name}, product={product_name}, qty={quantity}, total=${total_amount:,.2f}")
+
+                try:
+                    po_result = _po_adapter.create_purchase_order_from_pr({
+                        'pr_number': pr_number,
+                        'vendor_name': vendor_name or 'Default Vendor',
+                        'product_name': product_name,
+                        'quantity': quantity,
+                        'unit_price': unit_price,
+                        'total_amount': total_amount,
+                        'department': department,
+                        'currency': str(pr_payload.get('currency', 'USD')),
+                    })
+
+                    if po_result.get('success'):
+                        po_id = po_result['po_number']
+                        logger.info(f"[APPROVAL] PO CREATED: {po_id} (from PR {pr_number})")
+
+                        # Store PO reference in workflow
+                        cursor.execute("""
+                            UPDATE pr_approval_workflows
+                            SET odoo_po_id = %s,
+                                request_data = COALESCE(request_data, '{{}}'::jsonb) || %s::jsonb
+                            WHERE pr_number = %s
+                        """, (po_id, json.dumps({
+                            "po_data": {
+                                "po_number": po_id,
+                                "vendor_name": vendor_name,
+                                "product_name": product_name,
+                                "quantity": quantity,
+                                "unit_price": unit_price,
+                                "total_amount": total_amount,
+                            }
+                        }), pr_number))
+
+                        # Log notification for PO creation
+                        try:
+                            _po_adapter.log_notification({
+                                'event_type': 'po_created',
+                                'document_type': 'PO',
+                                'document_id': po_id,
+                                'recipient_email': workflow.get('requester_name', ''),
+                                'recipient_role': 'procurement',
+                                'subject': f'PO {po_id} created from approved PR {pr_number}',
+                                'body_preview': f'Purchase Order for {product_name} ({quantity} units) from {vendor_name}. Total: ${total_amount:,.2f}',
+                                'status': 'pending',
+                                'agent_name': 'ApprovalWorkflow',
+                            })
+                        except Exception:
+                            pass  # Notification failure is non-blocking
+
                     else:
-                        request_data = workflow.get('request_data') or {}
-                        context_payload = request_data.get('context', {}) if isinstance(request_data, dict) else {}
-                        pr_payload = context_payload.get('raw_pr_data', {}) if isinstance(context_payload, dict) else {}
+                        logger.error(f"[APPROVAL] PO creation failed: {po_result.get('error', 'unknown')}")
 
-                        requested_vendor_name = str(
-                            pr_payload.get('vendor_name')
-                            or pr_payload.get('selected_vendor_name')
-                            or ''
-                        ).strip()
-                        requested_product_name = str(
-                            pr_payload.get('product_name')
-                            or pr_payload.get('category')
-                            or 'Procurement Item'
-                        ).strip()
-                        requested_justification = str(pr_payload.get('justification') or '').strip()
-                        requested_budget_category = str(pr_payload.get('budget_category') or '').strip()
-                        requested_department = str(pr_payload.get('department') or workflow.get('department') or '').strip()
-
-                        # Find vendor from PR payload; fallback to first available vendor.
-                        vendors = odoo.get_vendors(limit=200)
-                        if not vendors:
-                            logger.error(f"[APPROVAL ACTION] ❌ No vendors available in Odoo")
-                        else:
-                            selected_vendor = None
-                            if requested_vendor_name:
-                                requested_lower = requested_vendor_name.lower()
-                                selected_vendor = next(
-                                    (v for v in vendors if str(v.get('name', '')).strip().lower() == requested_lower),
-                                    None,
-                                )
-                                if not selected_vendor:
-                                    selected_vendor = next(
-                                        (v for v in vendors if requested_lower in str(v.get('name', '')).strip().lower()),
-                                        None,
-                                    )
-
-                            if not selected_vendor:
-                                selected_vendor = vendors[0]
-
-                            vendor_id = selected_vendor['id']
-                            vendor_name = selected_vendor['name']
-                            logger.info(f"[APPROVAL ACTION] 🏪 Using vendor: {vendor_name} (ID: {vendor_id})")
-                            
-                            # Find product matching requested product/category name.
-                            products = odoo.get_products(limit=20, search_term=requested_product_name)
-                            if not products:
-                                products = odoo.get_products(limit=1)
-                            if not products:
-                                logger.error(f"[APPROVAL ACTION] ❌ No products available in Odoo")
-                            else:
-                                product_id = products[0]['id']
-                                product_name = products[0]['name']
-                                product_price = products[0].get('list_price', 100.0)
-                                requested_budget = pr_payload.get('budget', workflow.get('total_amount')) if isinstance(pr_payload, dict) else workflow.get('total_amount')
-                                
-                                # Prefer quantity from PR payload; fallback to amount-based estimate.
-                                requested_quantity = pr_payload.get('quantity') if isinstance(pr_payload, dict) else None
-                                try:
-                                    requested_quantity = int(requested_quantity) if requested_quantity is not None else None
-                                except (TypeError, ValueError):
-                                    requested_quantity = None
-
-                                quantity = requested_quantity if requested_quantity and requested_quantity > 0 else 1
-                                try:
-                                    requested_budget_value = float(requested_budget)
-                                except (TypeError, ValueError):
-                                    requested_budget_value = float(workflow['total_amount'])
-                                unit_price = requested_budget_value / max(quantity, 1)
-                                logger.info(f"[APPROVAL ACTION] 📦 Product: {product_name} (ID: {product_id})")
-                                logger.info(f"[APPROVAL ACTION] 📊 Quantity: {quantity} @ ${unit_price:.2f} each")
-                                
-                                # Create purchase order in Odoo
-                                order_lines = [{
-                                    'product_id': product_id,
-                                    'quantity': quantity,
-                                    'price': unit_price,
-                                    'name': requested_product_name or product_name,
-                                }]
-
-                                po_notes_parts = [
-                                    f"PR Number: {pr_number}",
-                                    f"Department: {requested_department or workflow.get('department', '')}",
-                                    f"Budget Category: {requested_budget_category}" if requested_budget_category else "",
-                                    f"Business Justification: {requested_justification}" if requested_justification else "",
-                                ]
-                                po_notes = "\n".join([p for p in po_notes_parts if p])
-                                
-                                po_id = odoo.create_purchase_order(
-                                    partner_id=vendor_id,
-                                    order_lines=order_lines,
-                                    origin=pr_number,
-                                    notes=po_notes,
-                                )
-                                
-                                logger.info(f"[APPROVAL ACTION] ✅✅✅ PURCHASE ORDER CREATED IN ODOO!")
-                                logger.info(f"[APPROVAL ACTION] 🆔 Odoo PO ID: {po_id}")
-                                logger.info(f"[APPROVAL ACTION] 🔗 PR {pr_number} → PO {po_id}")
-                                
-                                # Auto-confirm the PO (approve it in Odoo)
-                                logger.info(f"[APPROVAL ACTION] 🔄 Auto-confirming PO in Odoo...")
-                                if odoo.approve_purchase_order(po_id):
-                                    logger.info(f"[APPROVAL ACTION] ✅ PO {po_id} confirmed in Odoo (state: purchase)")
-                                else:
-                                    logger.warning(f"[APPROVAL ACTION] ⚠️ Could not confirm PO {po_id} automatically")
-                                
-                                # Store PO ID in workflow table for tracking
-                                logger.info(f"[APPROVAL ACTION] 💾 Storing PO ID in workflow table...")
-                                po_mapping_data = {
-                                    "odoo_po_data": {
-                                        "odoo_po_id": po_id,
-                                        "vendor_name": vendor_name,
-                                        "product_name": requested_product_name or product_name,
-                                        "quantity": quantity,
-                                        "unit_price": unit_price,
-                                        "origin_pr_number": pr_number,
-                                        "notes": po_notes,
-                                    }
-                                }
-                                cursor.execute("""
-                                    UPDATE pr_approval_workflows 
-                                    SET odoo_po_id = %s,
-                                        request_data = COALESCE(request_data, '{}'::jsonb) || %s::jsonb
-                                    WHERE pr_number = %s
-                                """, (po_id, json.dumps(po_mapping_data), pr_number))
-                                logger.info(f"[APPROVAL ACTION] ✅ PO ID {po_id} linked to workflow {pr_number}")
-                                
                 except Exception as e:
-                    logger.error(f"[APPROVAL ACTION] ❌ Error creating PO in Odoo: {str(e)}")
-                    logger.error(f"[APPROVAL ACTION] 📋 Workflow {pr_number} marked complete but PO creation failed")
-            else:
-                logger.error(f"[APPROVAL ACTION] ❌ Could not fetch workflow details for {pr_number}")
+                    logger.error(f"[APPROVAL] PO creation error: {e}")
+
+            # Log notification for PR approval completion
+            try:
+                from backend.services.adapters.factory import get_adapter as _notify_adapter
+                _notify_adapter().log_notification({
+                    'event_type': 'pr_fully_approved',
+                    'document_type': 'PR',
+                    'document_id': pr_number,
+                    'recipient_role': 'procurement',
+                    'subject': f'PR {pr_number} fully approved - all levels complete',
+                    'body_preview': f'All approval levels completed. PO creation triggered.',
+                    'status': 'pending',
+                    'agent_name': 'ApprovalWorkflow',
+                })
+            except Exception:
+                pass
         else:
             # Advance to next level
             logger.info(f"[APPROVAL ACTION] ⏭️ Advancing to next approval level...")
@@ -2782,11 +3466,27 @@ async def approve_workflow_step(
                     updated_at = CURRENT_TIMESTAMP 
                 WHERE pr_number = %s
             """, (pr_number,))
-            logger.info(f"[APPROVAL ACTION] ✅ Workflow advanced to next level")
-        
-        logger.info(f"[APPROVAL ACTION] 💾 Committing transaction to database...")
+            logger.info(f"[APPROVAL ACTION] Workflow advanced to next level")
+
+            # Notify requester about step approval
+            try:
+                from backend.services.adapters.factory import get_adapter as _step_adapter
+                _step_adapter().log_notification({
+                    'event_type': 'pr_step_approved',
+                    'document_type': 'PR',
+                    'document_id': pr_number,
+                    'recipient_role': 'procurement',
+                    'subject': f'PR {pr_number} - approval step completed, advancing to next level',
+                    'body_preview': f'Approved by {approver_email}. Awaiting next approver.',
+                    'status': 'pending',
+                    'agent_name': 'ApprovalWorkflow',
+                })
+            except Exception:
+                pass
+
+        logger.info(f"[APPROVAL ACTION] Committing transaction...")
         conn.commit()
-        logger.info(f"[APPROVAL ACTION] ✅✅✅ COMMIT SUCCESSFUL")
+        logger.info(f"[APPROVAL ACTION] COMMIT SUCCESSFUL")
         
         # Fetch final workflow state including PO ID
         cursor.execute("""
@@ -2801,12 +3501,21 @@ async def approve_workflow_step(
         return_db_connection(conn)
         
         logger.info("="*80)
-        logger.info(f"[APPROVAL ACTION] 🏁 Approval Complete")
-        logger.info(f"[APPROVAL ACTION] 🏁 PR: {pr_number} | Remaining: {remaining} | Workflow Complete: {remaining == 0}")
+        logger.info(f"[APPROVAL ACTION] Approval Complete")
+        logger.info(f"[APPROVAL ACTION] PR: {pr_number} | Remaining: {remaining} | Workflow Complete: {remaining == 0}")
         if odoo_po_id:
-            logger.info(f"[APPROVAL ACTION] 🏁 Odoo PO: {odoo_po_id}")
+            logger.info(f"[APPROVAL ACTION] Odoo PO: {odoo_po_id}")
         logger.info("="*80)
-        
+
+        # Bridge: if a session has an open approval gate for this PR, resolve it
+        # and continue the pipeline. Non-fatal — approval table already committed.
+        await _bridge_approval_to_session(
+            pr_number=pr_number,
+            action="approve",
+            payload={"approver_email": body.approver_email, "notes": body.notes},
+            background_tasks=background_tasks,
+        )
+
         return {
             "status": "approved",
             "pr_number": pr_number,
@@ -2827,6 +3536,7 @@ async def reject_workflow_step(
     pr_number: str,
     body: RejectStepRequest,
     request: Request,
+    background_tasks: BackgroundTasks,
     x_approver_email: str | None = Header(default=None, alias="X-Approver-Email"),
     x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
     current_user: dict = Depends(require_auth()),
@@ -2870,7 +3580,16 @@ async def reject_workflow_step(
         cursor.close()
 
         return_db_connection(conn)
-        
+
+        # Bridge: if a session has an open approval gate for this PR, resolve it
+        # with reject action so the session marks as failed. Non-fatal.
+        await _bridge_approval_to_session(
+            pr_number=pr_number,
+            action="reject",
+            payload={"approver_email": body.approver_email, "reason": body.rejection_reason},
+            background_tasks=background_tasks,
+        )
+
         return {
             "status": "rejected",
             "pr_number": pr_number,
@@ -2893,9 +3612,9 @@ async def get_my_approvals(approver_email: str, status: str = "pending", current
     status='history' returns their past decisions
     """
     logger.info("="*80)
-    logger.info(f"[MY APPROVALS] 📥 GET Request")
-    logger.info(f"[MY APPROVALS] 👤 Approver: {approver_email}")
-    logger.info(f"[MY APPROVALS] 🔍 Status Filter: {status}")
+    logger.info(f"[MY APPROVALS] GET Request")
+    logger.info(f"[MY APPROVALS] Approver: {approver_email}")
+    logger.info(f"[MY APPROVALS] Status Filter: {status}")
     logger.info("="*80)
     
     try:
@@ -2903,7 +3622,7 @@ async def get_my_approvals(approver_email: str, status: str = "pending", current
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         
         if status == "pending":
-            logger.info(f"[MY APPROVALS] 🔎 Querying PENDING approvals...")
+            logger.info(f"[MY APPROVALS] Querying PENDING approvals...")
             cursor.execute("""
                 SELECT 
                     w.pr_number, w.department, w.total_amount, w.requester_name, w.created_at,
@@ -2919,14 +3638,14 @@ async def get_my_approvals(approver_email: str, status: str = "pending", current
             """, (approver_email,))
             
             results = [dict(row) for row in cursor.fetchall()]
-            logger.info(f"[MY APPROVALS] 📊 Query returned {len(results)} pending approval(s)")
+            logger.info(f"[MY APPROVALS] Query returned {len(results)} pending approval(s)")
             
             if results:
-                logger.info(f"[MY APPROVALS] 📋 Pending PRs:")
+                logger.info(f"[MY APPROVALS] Pending PRs:")
                 for idx, r in enumerate(results, 1):
                     logger.info(f"[MY APPROVALS]   {idx}. {r['pr_number']} | {r['department']} | ${r['total_amount']:,.0f} | Level {r['approval_level']} | {r['days_pending']:.0f} days")
             else:
-                logger.info(f"[MY APPROVALS] ℹ️ No pending approvals found for {approver_email}")
+                logger.info(f"[MY APPROVALS] ️ No pending approvals found for {approver_email}")
             
             # Add level names
             level_map = {1: "Manager", 2: "Director", 3: "VP/CFO"}
@@ -2937,12 +3656,12 @@ async def get_my_approvals(approver_email: str, status: str = "pending", current
 
             
             return_db_connection(conn)
-            logger.info(f"[MY APPROVALS] ✅ Returning {len(results)} approval(s)")
+            logger.info(f"[MY APPROVALS] Returning {len(results)} approval(s)")
             logger.info("="*80)
             return {"approvals": results}
         
         else:  # history
-            logger.info(f"[MY APPROVALS] 🔎 Querying HISTORY (past decisions)...")
+            logger.info(f"[MY APPROVALS] Querying HISTORY (past decisions)...")
             cursor.execute("""
                 SELECT 
                     w.pr_number, w.department, w.total_amount, w.requester_name,
@@ -2956,10 +3675,10 @@ async def get_my_approvals(approver_email: str, status: str = "pending", current
             """, (approver_email,))
             
             results = [dict(row) for row in cursor.fetchall()]
-            logger.info(f"[MY APPROVALS] 📊 Query returned {len(results)} historical decision(s)")
+            logger.info(f"[MY APPROVALS] Query returned {len(results)} historical decision(s)")
             
             if results:
-                logger.info(f"[MY APPROVALS] 📋 Decision History:")
+                logger.info(f"[MY APPROVALS] Decision History:")
                 for idx, r in enumerate(results, 1):
                     logger.info(f"[MY APPROVALS]   {idx}. {r['pr_number']} | {r['decision'].upper()} | Level {r['approval_level']}")
             
@@ -2972,13 +3691,13 @@ async def get_my_approvals(approver_email: str, status: str = "pending", current
 
             
             return_db_connection(conn)
-            logger.info(f"[MY APPROVALS] ✅ Returning {len(results)} historical record(s)")
+            logger.info(f"[MY APPROVALS] Returning {len(results)} historical record(s)")
             logger.info("="*80)
             return {"history": results}
         
     except Exception as e:
         logger.error("="*80)
-        logger.error(f"[MY APPROVALS] ❌ ERROR: {e}")
+        logger.error(f"[MY APPROVALS] ERROR: {e}")
         logger.error("="*80)
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -2991,15 +3710,15 @@ async def get_approver_stats(approver_email: str, current_user: dict = Depends(r
     Returns: pending count, approved count, rejected count, rejection rate, avg decision time.
     """
     logger.info("="*80)
-    logger.info(f"[APPROVAL STATS] 📊 Stats Request")
-    logger.info(f"[APPROVAL STATS] 👤 Approver: {approver_email}")
+    logger.info(f"[APPROVAL STATS] Stats Request")
+    logger.info(f"[APPROVAL STATS] Approver: {approver_email}")
     logger.info("="*80)
     
     try:
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         
-        logger.info(f"[APPROVAL STATS] 🔎 Querying approval statistics...")
+        logger.info(f"[APPROVAL STATS] Querying approval statistics...")
         cursor.execute("""
             SELECT 
                 COUNT(*) FILTER (WHERE status = 'pending') as pending_count,
@@ -3031,7 +3750,7 @@ async def get_approver_stats(approver_email: str, current_user: dict = Depends(r
 
         return_db_connection(conn)
         
-        logger.info(f"[APPROVAL STATS] 📊 Statistics:")
+        logger.info(f"[APPROVAL STATS] Statistics:")
         logger.info(f"[APPROVAL STATS]   - Pending: {stats.get('pending_count', 0)}")
         logger.info(f"[APPROVAL STATS]   - Approved: {stats.get('approved_count', 0)}")
         logger.info(f"[APPROVAL STATS]   - Rejected: {stats.get('rejected_count', 0)}")
@@ -3050,7 +3769,7 @@ async def get_approver_stats(approver_email: str, current_user: dict = Depends(r
         
     except Exception as e:
         logger.error("="*80)
-        logger.error(f"[APPROVAL STATS] ❌ ERROR: {e}")
+        logger.error(f"[APPROVAL STATS] ERROR: {e}")
         logger.error("="*80)
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -3063,18 +3782,18 @@ async def get_approval_chains(current_user: dict = Depends(require_auth())):
     Shows the database rules that define who approves what for each department.
     Used by admin/settings page to display approval routing configuration.
     """
-    logger.info("[AGENTIC API] 📋 GET /approval-chains - Starting request")
+    logger.info("[AGENTIC API] GET /approval-chains - Starting request")
     
     conn = None
     cursor = None
     
     try:
-        logger.info("[AGENTIC API] 🔌 Acquiring database connection from pool...")
+        logger.info("[AGENTIC API] Acquiring database connection from pool...")
         conn = get_db_connection()
-        logger.info("[AGENTIC API] ✅ Connection acquired, creating cursor...")
+        logger.info("[AGENTIC API] Connection acquired, creating cursor...")
         
         cursor = conn.cursor(cursor_factory=RealDictCursor)
-        logger.info("[AGENTIC API] ✅ Cursor created, executing query...")
+        logger.info("[AGENTIC API] Cursor created, executing query...")
         
         cursor.execute("""
             SELECT 
@@ -3085,33 +3804,33 @@ async def get_approval_chains(current_user: dict = Depends(require_auth())):
         """)
         
         chains = [dict(row) for row in cursor.fetchall()]
-        logger.info(f"[AGENTIC API] ✅ Query executed - Retrieved {len(chains)} approval chains")
+        logger.info(f"[AGENTIC API] Query executed - Retrieved {len(chains)} approval chains")
         
         cursor.close()
-        logger.info("[AGENTIC API] 🔄 Cursor closed, returning connection to pool...")
+        logger.info("[AGENTIC API] Cursor closed, returning connection to pool...")
 
         return_db_connection(conn)
-        logger.info("[AGENTIC API] ✅ Connection returned to pool - Request complete")
+        logger.info("[AGENTIC API] Connection returned to pool - Request complete")
         
         return {"chains": chains}
         
     except Exception as e:
-        logger.error(f"[AGENTIC API] ❌ Error in GET /approval-chains: {e}")
+        logger.error(f"[AGENTIC API] Error in GET /approval-chains: {e}")
         
         # Cleanup on error
         if cursor:
             try:
                 cursor.close()
-                logger.info("[AGENTIC API] 🧹 Cursor closed after error")
+                logger.info("[AGENTIC API] Cursor closed after error")
             except Exception as cleanup_error:
-                logger.error(f"[AGENTIC API] ⚠️ Failed to close cursor: {cleanup_error}")
+                logger.error(f"[AGENTIC API] ️ Failed to close cursor: {cleanup_error}")
         
         if conn:
             try:
                 return_db_connection(conn)
-                logger.info("[AGENTIC API] 🧹 Connection returned to pool after error")
+                logger.info("[AGENTIC API] Connection returned to pool after error")
             except Exception as cleanup_error:
-                logger.error(f"[AGENTIC API] ⚠️ Failed to return connection: {cleanup_error}")
+                logger.error(f"[AGENTIC API] ️ Failed to return connection: {cleanup_error}")
 
         raise HTTPException(status_code=500, detail=str(e))
 

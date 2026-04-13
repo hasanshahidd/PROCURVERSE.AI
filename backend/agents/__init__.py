@@ -62,33 +62,84 @@ class AgentStatus(Enum):
     COMPLETED = "completed"
 
 
+class HumanGateRequest:
+    """
+    Universal human gate — ANY agent can return this to pause the pipeline
+    and request user input, confirmation, or approval inline.
+
+    Examples:
+      - Compliance agent → policy override approval
+      - Budget agent → continue above threshold?
+      - Vendor agent → select from shortlist
+      - Invoice agent → resolve mismatch exception
+      - Payment agent → final release approval
+      - QC agent → accept/reject damaged goods
+    """
+    def __init__(
+        self,
+        gate_type: str,               # e.g. "vendor_selection", "approval", "exception_resolution"
+        message: str,                  # User-facing prompt
+        options: Optional[List[Dict[str, Any]]] = None,  # Selectable options with labels
+        actions: Optional[List[str]] = None,              # Simple action buttons ["approve", "reject"]
+        context: Optional[Dict[str, Any]] = None,         # Extra context for the UI
+        required: bool = True,         # If False, pipeline can skip after timeout
+    ):
+        self.gate_type = gate_type
+        self.message = message
+        self.options = options or []
+        self.actions = actions or []
+        self.context = context or {}
+        self.required = required
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "type": self.gate_type,
+            "message": self.message,
+            "options": [o if isinstance(o, str) else o.get("label", str(o)) for o in self.options],
+            "option_details": self.options,
+            "actions": self.actions,
+            "context": self.context,
+            "required": self.required,
+        }
+
+
 class AgentDecision:
     """Represents an agent's decision with confidence and reasoning"""
-    
+
     def __init__(
         self,
         action: str,
         reasoning: str,
         confidence: float,
         context: Dict[str, Any],
-        alternatives: Optional[List[str]] = None
+        alternatives: Optional[List[str]] = None,
+        human_gate: Optional[HumanGateRequest] = None,
     ):
         self.action = action
         self.reasoning = reasoning
         self.confidence = confidence  # 0.0 to 1.0
         self.context = context
         self.alternatives = alternatives or []
+        self.human_gate = human_gate  # If set, pipeline pauses here
         self.timestamp = datetime.now()
-    
+
+    @property
+    def needs_human_input(self) -> bool:
+        """True if this decision requires human confirmation before proceeding."""
+        return self.human_gate is not None
+
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        d = {
             "action": self.action,
             "reasoning": self.reasoning,
             "confidence": self.confidence,
             "context": self.context,
             "alternatives": self.alternatives,
-            "timestamp": self.timestamp.isoformat()
+            "timestamp": self.timestamp.isoformat(),
         }
+        if self.human_gate:
+            d["human_gate"] = self.human_gate.to_dict()
+        return d
 
 
 class BaseAgent(ABC):
@@ -204,9 +255,13 @@ class BaseAgent(ABC):
         if event_stream:
             await event_stream.emit(AgentEventType.OBSERVATION_COMPLETE, {
                 "agent": self.name,
+                "agent_name": self.name,
                 "observations": f"Loaded {len(observations)} data points",
                 "records_count": f"{len(self.tools)} tools available",
-                "tools_available": len(self.tools)
+                "tools_available": len(self.tools),
+                # Include context data for business summaries
+                "department": observations.get("department", observations.get("input_context", {}).get("department", "")),
+                "request": observations.get("request", observations.get("input_context", {}).get("request", "")),
             })
         
         return observations
@@ -271,7 +326,7 @@ class BaseAgent(ABC):
             tool_names = [tool.name for tool in self.tools]
             await event_stream.emit(AgentEventType.ACTING, {
                 "agent": self.name,
-                "message": f"{self.name} executing action: {decision.action}",
+                "message": f"{self.name} executing action: {decision.action if isinstance(decision.action, str) else (decision.action.get('primary', '') if isinstance(decision.action, dict) else str(decision.action))}",
                 "action": decision.action,
                 "phase": "act",
                 "tools": tool_names[:5],  # Candidate tools (not guaranteed invocation)
@@ -300,25 +355,40 @@ class BaseAgent(ABC):
                 f"({execution_time}ms)"
             )
             
-            # Emit action complete
+            # Emit action complete with FULL result data for business summaries
             if event_stream:
-                # Extract result summary if available
-                result_summary = "Success"
-                if isinstance(result, dict):
-                    if "status" in result:
-                        result_summary = f"{result['status'].title()}"
-                    if "budget_verified" in result:
-                        result_summary += f" - Budget {'verified' if result['budget_verified'] else 'insufficient'}"
-                    if "action" in result:
-                        result_summary = f"{result['action'].replace('_', ' ').title()}"
-                
-                await event_stream.emit(AgentEventType.ACTION_COMPLETE, {
+                action_complete_data = {
                     "agent": self.name,
+                    "agent_name": self.name,
                     "action": decision.action,
                     "execution_time_ms": execution_time,
                     "success": True,
-                    "result": result_summary
-                })
+                    "confidence": getattr(decision, 'confidence', 0),
+                    "reasoning": getattr(decision, 'reasoning', ''),
+                }
+                # Include full result data for business panel
+                if isinstance(result, dict):
+                    # Safe subset of result keys for SSE (avoid huge payloads)
+                    for key in ["status", "action", "message", "budget_verified",
+                                "available_budget", "requested_amount", "department",
+                                "vendor_name", "winning_vendor", "top_vendor",
+                                "risk_level", "overall_risk", "confidence_score",
+                                "pr_number", "po_number", "rfq_number", "rtv_number",
+                                "amendment_number", "score", "pass_fail", "total_score",
+                                "matched", "exceptions", "next_suggestions",
+                                "compliance_score", "savings_opportunities",
+                                "on_time_delivery_rate", "quality_score",
+                                "accrual_ref", "debit_note_number", "credit_expected"]:
+                        val = result.get(key)
+                        if val is not None:
+                            action_complete_data[key] = val
+                    # Create readable summary
+                    result_summary = result.get("message", result.get("action", "Completed"))
+                    action_complete_data["result"] = str(result_summary)[:500]
+                else:
+                    action_complete_data["result"] = "Success"
+
+                await event_stream.emit(AgentEventType.ACTION_COMPLETE, action_complete_data)
             
             return result
             
@@ -437,6 +507,7 @@ class BaseAgent(ABC):
                     raw_data=input_data,
                 )
             observations = await self.observe(input_data)
+            logger.info(f"[{self.name}] OBSERVE complete. observations_keys={list(observations.keys()) if isinstance(observations, dict) else 'not-dict'}")
             if not event_stream:
                 await agent_event_stream.emit_executive_step(
                     request_id,
@@ -447,8 +518,10 @@ class BaseAgent(ABC):
                     status="completed",
                     raw_data=observations,
                 )
-            
-            # No synthetic delay: keep per-phase timing true to real execution.
+
+            # Yield control so SSE generator can flush events to the client
+            # (critical when agent methods contain sync blocking I/O like psycopg2/XML-RPC)
+            await asyncio.sleep(0)
             
             # Emit DECIDING event (for agents that override decide without SSE emission)
             if event_stream:
@@ -471,16 +544,26 @@ class BaseAgent(ABC):
             
             # 2. DECIDE
             decide_started = int(time.time() * 1000)
+            logger.info(f"[{self.name}] Starting DECIDE phase...")
             decision = await self.decide(observations)
+            logger.info(f"[{self.name}] DECIDE complete. action={decision.action}, confidence={decision.confidence:.2f}, reasoning={decision.reasoning[:100] if decision.reasoning else 'none'}")
             
             # Emit DECISION_MADE event (for agents that override decide without SSE emission)
             if event_stream:
                 await event_stream.emit(AgentEventType.DECISION_MADE, {
                     "agent": self.name,
+                    "agent_name": self.name,
                     "action": decision.action,
-                    "reasoning": decision.reasoning[:200] if decision.reasoning else "Decision made",
+                    "reasoning": decision.reasoning[:300] if decision.reasoning else "Decision made",
                     "confidence": decision.confidence,
-                    "alternatives": decision.alternatives[:3] if decision.alternatives else []
+                    "alternatives": decision.alternatives[:3] if decision.alternatives else [],
+                    # Include decision context for business summaries
+                    "decision_context": {
+                        k: v for k, v in (decision.context or {}).items()
+                        if k in ["department", "budget", "amount", "vendor_name", "status",
+                                 "budget_verified", "available_budget", "risk_level"]
+                        and v is not None
+                    } if isinstance(decision.context, dict) else {},
                 })
             else:
                 await agent_event_stream.emit_executive_step(
@@ -494,25 +577,51 @@ class BaseAgent(ABC):
                     raw_data=decision.to_dict(),
                 )
             
-            # No synthetic delay: keep per-phase timing true to real execution.
-            
-            # Check if human approval needed (low confidence)
-            if decision.confidence < 0.6:
+            # Yield control so SSE generator can flush events to the client
+            await asyncio.sleep(0)
+
+            # ── HUMAN GATE: agent-driven OR confidence-based ──────────────
+            # Any agent's decide() can set decision.human_gate to pause the pipeline.
+            # Additionally, low confidence auto-triggers a gate.
+            if decision.needs_human_input:
+                # Agent explicitly requested human input (vendor selection, approval, etc.)
+                gate = decision.human_gate
+                logger.info(
+                    f"[{self.name}] Human gate triggered: type={gate.gate_type}, "
+                    f"message={gate.message[:80]}"
+                )
+                approval_id = self._save_pending_approval(decision, input_data)
+                return {
+                    "status": "needs_human_input",
+                    "approval_id": approval_id,
+                    "agent_name": self.name,
+                    "confidence": decision.confidence,
+                    "decision": decision.to_dict(),
+                    "human_action_required": gate.to_dict(),
+                    "message": gate.message,
+                }
+
+            if decision.confidence < 0.4:
+                # Low confidence auto-gate (< 0.4 = very uncertain)
                 logger.warning(
                     f"[{self.name}] Low confidence ({decision.confidence:.2f}), "
                     "requesting human approval"
                 )
-                
-                # Save to pending_approvals table
                 approval_id = self._save_pending_approval(decision, input_data)
                 agent_event_stream.finalize_executive_session(request_id, "escalated")
-                
                 return {
                     "status": "pending_human_approval",
                     "approval_id": approval_id,
                     "agent_name": self.name,
                     "confidence": decision.confidence,
                     "decision": decision.to_dict(),
+                    "human_action_required": {
+                        "type": "low_confidence_review",
+                        "message": f"{self.name} confidence is {decision.confidence:.0%}. Please review and approve/reject.",
+                        "options": [],
+                        "actions": ["approve", "reject"],
+                        "context": {"agent": self.name, "action": decision.action, "reasoning": decision.reasoning},
+                    },
                     "message": (
                         f"Agent confidence too low ({decision.confidence:.2f}). "
                         f"Saved as {approval_id} for human review. "
@@ -532,7 +641,9 @@ class BaseAgent(ABC):
                     status="active",
                     raw_data=decision.to_dict(),
                 )
+            logger.info(f"[{self.name}] Starting ACT phase with action={decision.action}...")
             result = await self.act(decision)
+            logger.info(f"[{self.name}] ACT complete. result_keys={list(result.keys()) if isinstance(result, dict) else 'not-dict'}, status={result.get('status') if isinstance(result, dict) else 'N/A'}")
             if not event_stream:
                 await agent_event_stream.emit_executive_step(
                     request_id,
@@ -545,6 +656,9 @@ class BaseAgent(ABC):
                     raw_data=result if isinstance(result, dict) else {"result": result},
                 )
             
+            # Yield control so SSE generator can flush events to the client
+            await asyncio.sleep(0)
+
             # 4. LEARN (pass input_data for event_stream access)
             learn_started = int(time.time() * 1000)
             if not event_stream:
@@ -577,7 +691,8 @@ class BaseAgent(ABC):
             
             self.status = AgentStatus.COMPLETED
             agent_event_stream.finalize_executive_session(request_id, "success")
-            
+
+            logger.info(f"[{self.name}] FULL ODAL CYCLE COMPLETE. Returning success result.")
             return {
                 "status": "success",
                 "agent": self.name,
@@ -587,7 +702,7 @@ class BaseAgent(ABC):
             
         except Exception as e:
             self.status = AgentStatus.ERROR
-            logger.error(f"[{self.name}] Execution failed: {str(e)}")
+            logger.error(f"[{self.name}] ODAL EXECUTION FAILED: {type(e).__name__}: {str(e)}", exc_info=True)
             request_id = input_data.get("request_id")
             if request_id:
                 await agent_event_stream.emit_executive_step(
@@ -768,6 +883,10 @@ Respond in JSON format:
             return [self._serialize_for_json(item) for item in obj]
         elif isinstance(obj, tuple):
             return tuple(self._serialize_for_json(item) for item in obj)
+        elif isinstance(obj, set):
+            return [self._serialize_for_json(item) for item in obj]
+        elif isinstance(obj, (int, float, bool, str)):
+            return obj
         # Skip non-serializable objects (return None instead of the object)
         elif hasattr(obj, '__dict__') or callable(obj):
             return str(type(obj).__name__)  # Return type name for debugging

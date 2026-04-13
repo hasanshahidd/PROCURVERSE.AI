@@ -17,57 +17,49 @@ from openai import OpenAI
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
 
-# Pre-defined responses for common queries
+# Sprint E (2026-04-11): Friendly, on-brand, low-emoji responses. These
+# replace the old bullet-heavy greeting cards. Tone: confident, helpful,
+# human — never robotic, never emoji-spam. Responses are kept short so the
+# chat feels conversational, not like a product brochure.
 GREETING_RESPONSES = {
-    "greeting": """👋 Hello! I'm your AI procurement assistant.
+    "greeting": (
+        "Hey — I'm your procurement copilot. I can run the full procure-to-pay "
+        "flow for you (raise a request, check budget, pick a vendor, route "
+        "approvals, cut the PO, reconcile the invoice), or answer questions "
+        "about your current ERP data.\n\n"
+        "A few things you can try:\n"
+        "- Procure 20 Dell servers for IT at $8,000 each\n"
+        "- Show open purchase orders\n"
+        "- Who approves a $75,000 IT purchase?\n"
+        "- What's the Operations budget looking like?"
+    ),
 
-I can help you with:
-- 💰 **Budget Verification**: "Can Finance afford $50,000?"
-- 📋 **Approval Routing**: "Who needs to approve a $75,000 IT purchase?"
-- 📦 **Purchase Orders**: "Show pending purchase orders"
-- 🏢 **Vendors**: "List all active vendors"
-- 📊 **Budget Status**: "Show IT department budget for 2026"
+    "help": (
+        "Here's what I can do for you:\n\n"
+        "End-to-end procurement — tell me what you need and I'll run "
+        "compliance, budget, vendor ranking, PR/PO creation, approvals, "
+        "goods receipt, invoice matching, and payment readiness in one go.\n\n"
+        "Targeted answers — ask me about any PO, vendor, budget, or "
+        "approval chain and I'll pull it straight from the ERP.\n\n"
+        "Follow-ups inside a session — once a procurement run is active, "
+        "just keep chatting and I'll continue that run instead of starting "
+        "a new one.\n\n"
+        "Try: \"Procure 50 monitors for IT at $200 each\" or "
+        "\"Show vendors for Office Supplies.\""
+    ),
 
-Try asking me about budgets, approvals, or purchase orders!""",
-    
-    "help": """🔍 **What I Can Do:**
-
-**Autonomous Actions** (AI Agents):
-- Verify budgets and reserve funds
-- Route purchase requisitions through approval chains
-- Check budget availability before purchases
-- Assign appropriate approvers based on amount/department
-
-**Data Queries**:
-- View purchase orders from Odoo ERP
-- Check vendor and product catalogs
-- Display budget status for departments
-- Show approval chain rules
-
-**Examples**:
-- "Verify IT budget for $30,000 CAPEX and reserve the amount"
-- "Route PR-2026-0100 for $55,000 in Finance to required approvers"
-- "Show all pending purchase orders"
-- "List approval chain for Operations department"
-
-Just ask naturally - I'll understand! 🚀""",
-    
-    "capabilities": """🤖 **System Capabilities:**
-
-**Data Sources**:
-- Odoo ERP (17 purchase orders, vendors, products)
-- Custom budget tracking (4 departments: IT, Finance, Operations, Procurement)
-- Multi-level approval chains (Manager → Director → VP/CFO)
-- Real-time agent action logs
-
-**AI Agents**:
-- BudgetVerificationAgent: Checks/commits budgets (80%, 90%, 95% alerts)
-- ApprovalRoutingAgent: Routes PRs based on amount thresholds
-- Orchestrator: Coordinates multi-agent workflows
-
-**Languages**: English, Urdu, Arabic (RTL support)
-
-Try asking: "Verify Finance budget for $25,000 OPEX and route to approvers" """
+    "capabilities": (
+        "I'm wired into your ERP and the full agentic P2P pipeline.\n\n"
+        "Data I can read: purchase orders, vendors, items, invoices, "
+        "budget tracking, approval rules, contracts, and spend analytics.\n\n"
+        "Actions I can run: budget verification, approval routing, vendor "
+        "selection, PR/PO creation, goods receipt, invoice matching, "
+        "payment readiness checks, and the full P2P cycle end-to-end.\n\n"
+        "ERPs supported: Oracle Fusion, SAP S/4HANA, Odoo, Dynamics 365, "
+        "ERPNext, SAP Business One — switchable at runtime without "
+        "touching any code.\n\n"
+        "Just ask naturally. I'll understand."
+    ),
 }
 
 
@@ -115,44 +107,68 @@ def handle_general_query(message: str, language: str = "en", history: list = Non
     
     # Fallback: Use LLM for truly conversational queries
     # (Questions like "How's the weather?" that don't fit data queries)
+    # Sprint E (2026-04-11): tone is friendly, confident, low-emoji. Never
+    # bullet-heavy unless the user asks for a list. Grounds answers in the
+    # live ERP (Oracle Fusion by default) and the agentic P2P pipeline so
+    # replies feel like a colleague, not a product brochure.
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": """You are a friendly procurement assistant.
-
-The user asked a general question that doesn't require data access.
-
-Respond helpfully and suggest they ask about:
-- Budget verification
-- Approval routing
-- Purchase orders
-- Vendor information
-- Budget status
-
-Keep responses brief and friendly."""},
-                {"role": "user", "content": message}
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a procurement copilot wired into the user's live ERP "
+                        "(Oracle Fusion by default, with SAP S/4HANA, Odoo, Dynamics 365, "
+                        "ERPNext, and SAP Business One also supported). You run the full "
+                        "procure-to-pay flow end-to-end — budgets, approvals, vendor "
+                        "selection, PR/PO creation, goods receipt, 3-way match, and "
+                        "payment readiness — and you can answer targeted questions about "
+                        "any ERP entity on demand.\n\n"
+                        "Tone rules:\n"
+                        "- Friendly, confident, human. Write like a helpful colleague, "
+                        "not a chatbot or a product page.\n"
+                        "- Keep replies short and conversational. Two or three sentences "
+                        "is usually plenty.\n"
+                        "- Avoid emojis entirely unless the user used one first. If you "
+                        "must use one, use at most a single, relevant glyph.\n"
+                        "- Never dump bullet lists unless the user explicitly asks for a "
+                        "list or the answer truly needs steps.\n"
+                        "- When the user's question is off-topic, redirect warmly: "
+                        "acknowledge the question in one line, then offer a concrete "
+                        "procurement example they could ask instead.\n"
+                        "- Never repeat the same example twice in a session.\n"
+                        "- Never start a reply with \"Sure,\" \"Of course,\" \"Absolutely,\" "
+                        "or a similar filler."
+                    ),
+                },
+                {"role": "user", "content": message},
             ],
-            temperature=0.7,
-            max_tokens=200
+            temperature=0.6,
+            max_tokens=220,
         )
-        
+
         explanation = response.choices[0].message.content
-        
+
         return {
             "response": explanation,
             "explanation": explanation,
             "sql": None,
-            "data": []
+            "data": [],
         }
     except Exception as e:
-        # If LLM fails, provide generic helpful response
+        # LLM down — still answer in the same warm, single-sentence voice.
+        fallback = (
+            "I'm your procurement copilot — I can run the full procure-to-pay flow or "
+            "pull live data from your ERP. Try something like \"Procure 20 Dell servers "
+            "for IT at $8,000 each\" or \"What's the Operations budget looking like?\""
+        )
         return {
-            "response": "I can help you with procurement data! Try asking about budgets, approvals, purchase orders, or vendors.",
-            "explanation": "I can help you with procurement data! Try asking about budgets, approvals, purchase orders, or vendors.",
+            "response": fallback,
+            "explanation": fallback,
             "sql": None,
             "data": [],
-            "error": str(e)
+            "error": str(e),
         }
 
 

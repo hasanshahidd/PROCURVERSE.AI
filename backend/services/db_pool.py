@@ -82,14 +82,14 @@ class DatabaseConnectionPool:
             _pool_stats["idle_connections"] = self.minconn
             
             logger.info(
-                f"✅ Database connection pool initialized: "
+                f"Database connection pool initialized: "
                 f"min={self.minconn}, max={self.maxconn}, timeout={self.connection_timeout}s"
             )
             
         except Exception as e:
             _pool_stats["pool_initialized"] = False
             _pool_stats["failures"] += 1
-            logger.error(f"❌ Failed to initialize connection pool: {e}")
+            logger.error(f"Failed to initialize connection pool: {e}")
             raise
     
     def get_connection(self) -> psycopg2.extensions.connection:
@@ -124,7 +124,7 @@ class DatabaseConnectionPool:
                 _pool_stats["idle_connections"] = max(0, _pool_stats["idle_connections"] - 1)
                 
                 logger.info(
-                    f"✅ [POOL GET SUCCESS] Connection acquired on attempt {attempt + 1} - "
+                    f"[POOL GET SUCCESS] Connection acquired on attempt {attempt + 1} - "
                     f"Active: {_pool_stats['active_connections']}, Idle: {_pool_stats['idle_connections']}, "
                     f"Total acquired: {_pool_stats['total_acquired']}"
                 )
@@ -136,18 +136,18 @@ class DatabaseConnectionPool:
                 
                 if attempt < max_retries - 1:
                     logger.warning(
-                        f"⚠️ [POOL GET RETRY] Failed attempt {attempt + 1}/{max_retries}: {e}. "
+                        f"️ [POOL GET RETRY] Failed attempt {attempt + 1}/{max_retries}: {e}. "
                         f"Retrying in {retry_delay}s..."
                     )
                     time.sleep(retry_delay)
                     retry_delay *= 2  # Exponential backoff
                 else:
-                    logger.error(f"❌ [POOL GET FAILED] All {max_retries} attempts failed: {e}")
+                    logger.error(f"[POOL GET FAILED] All {max_retries} attempts failed: {e}")
                     raise
             
             except Exception as e:
                 _pool_stats["failures"] += 1
-                logger.error(f"❌ [POOL GET ERROR] Unexpected error: {e}")
+                logger.error(f"[POOL GET ERROR] Unexpected error: {e}")
                 raise
     
     def return_connection(self, conn: psycopg2.extensions.connection) -> None:
@@ -174,14 +174,14 @@ class DatabaseConnectionPool:
             _pool_stats["idle_connections"] += 1
             
             logger.info(
-                f"✅ [POOL RETURN SUCCESS] Connection returned - "
+                f"[POOL RETURN SUCCESS] Connection returned - "
                 f"Active: {_pool_stats['active_connections']}, Idle: {_pool_stats['idle_connections']}, "
                 f"Total returned: {_pool_stats['total_returned']}"
             )
             
         except Exception as e:
             _pool_stats["failures"] += 1
-            logger.error(f"❌ [POOL RETURN ERROR] Failed to return connection to pool: {e}")
+            logger.error(f"[POOL RETURN ERROR] Failed to return connection to pool: {e}")
             # Fallback: close connection
             if conn:
                 try:
@@ -227,12 +227,12 @@ class DatabaseConnectionPool:
             health_status["healthy"] = True
             _pool_stats["last_health_check"] = time.time()
             
-            logger.info("✅ [Health Check] Connection pool healthy")
+            logger.info("[Health Check] Connection pool healthy")
             
         except Exception as e:
             health_status["error"] = str(e)
             _pool_stats["failures"] += 1
-            logger.error(f"❌ [Health Check] Connection pool unhealthy: {e}")
+            logger.error(f"[Health Check] Connection pool unhealthy: {e}")
         
         return health_status
     
@@ -267,7 +267,7 @@ class DatabaseConnectionPool:
         if self.pool:
             try:
                 self.pool.closeall()
-                logger.info("✅ All database connections closed")
+                logger.info("All database connections closed")
                 
                 # Reset statistics
                 _pool_stats["active_connections"] = 0
@@ -275,7 +275,7 @@ class DatabaseConnectionPool:
                 _pool_stats["pool_initialized"] = False
                 
             except Exception as e:
-                logger.error(f"❌ Error closing connections: {e}")
+                logger.error(f"Error closing connections: {e}")
     
     @contextmanager
     def get_cursor(self, dict_cursor: bool = True):
@@ -306,7 +306,7 @@ class DatabaseConnectionPool:
         except Exception as e:
             if conn:
                 conn.rollback()
-            logger.error(f"❌ Database error: {e}")
+            logger.error(f"Database error: {e}")
             raise
             
         finally:

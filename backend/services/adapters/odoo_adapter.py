@@ -5,9 +5,9 @@ OdooAdapter — reads from live Odoo ERP via XML-RPC,
 Activated by:  DATA_SOURCE=odoo  in .env
 Field mapping: uses table_registry (odoo_model + odoo_key_field columns)
 
-Demo mode: When ODOO_URL is not set, queries vendors_odoo, po_headers_odoo,
-           items_odoo, invoices_odoo, grn_headers_odoo, spend_odoo tables
-           in PostgreSQL (seeded with Odoo-format demo data).
+Demo mode: When ODOO_URL is not set, queries odoo_partners, odoo_products,
+           odoo_purchase_orders, odoo_invoices, odoo_warehouses, etc.
+           in PostgreSQL (seeded from CSV test data).
 Live mode: set ODOO_URL, ODOO_DB, ODOO_USER, ODOO_PASSWORD in .env
 """
 
@@ -20,12 +20,40 @@ logger = logging.getLogger(__name__)
 
 _SUFFIX = 'odoo'
 
+# Map old logical table names to new CSV-based table names
+_ODOO_TABLE_MAP = {
+    'vendors':                'odoo_partners',
+    'items':                  'odoo_products',
+    'po_headers':             'odoo_purchase_orders',
+    'invoices':               'odoo_invoices',
+    'grn_headers':            'odoo_warehouses',
+    'spend':                  'odoo_sale_orders',
+    'cost_centers':           'odoo_companies',
+    'purchase_requisitions':  'odoo_purchase_orders',
+    'approved_supplier_list': 'odoo_partners',
+    'contracts':              'odoo_partners',
+    'exchange_rates':         'odoo_currencies',
+    'warehouses':             'odoo_warehouses',
+    'payment_terms':          'odoo_payment_terms',
+    'taxes':                  'odoo_taxes',
+    'employees':              'odoo_employees',
+    'gl_accounts':            'odoo_chart_of_accounts',
+    'ap_aging':               'odoo_invoices',
+    'payment_proposals':      'odoo_invoices',
+    'budget':                 'odoo_companies',
+    'vendor_performance':     'odoo_partners',
+    'inventory':              'odoo_locations',
+    'rfq_headers':            'odoo_purchase_orders',
+    'vendor_quotes':          'odoo_purchase_orders',
+}
+
 
 def _query(table_base: str, where: str = '', params: tuple = (), limit: int = 500) -> list:
     """Query an Odoo-specific PostgreSQL table, returning list of dicts."""
     from backend.services.nmi_data_service import get_conn
     from psycopg2.extras import RealDictCursor
-    table = f'{table_base}_{_SUFFIX}'
+    # Use new CSV table mapping, fallback to old pattern
+    table = _ODOO_TABLE_MAP.get(table_base, f'{table_base}_{_SUFFIX}')
     conn = None
     try:
         conn = get_conn()
@@ -198,7 +226,10 @@ class OdooAdapter(IDataSourceAdapter):
 
     @property
     def _use_demo(self) -> bool:
-        """True when live Odoo is not configured — use PG demo tables."""
+        """True when in demo mode OR live Odoo is not configured."""
+        data_source = os.environ.get("DATA_SOURCE", "").lower()
+        if data_source.startswith("demo_"):
+            return True  # demo mode = always use PostgreSQL tables
         return not self.url
 
     def source_name(self) -> str:
@@ -228,7 +259,7 @@ class OdooAdapter(IDataSourceAdapter):
 
     def get_vendors(self, active_only: bool = True, limit: int = 200) -> list:
         if self._use_demo:
-            where = 'active = TRUE' if active_only else ''
+            where = "active::text IN ('True','true','TRUE','1','t')" if active_only else ''
             return [_norm_vendor(r) for r in _query('vendors', where=where, limit=limit)]
         domain = [('supplier_rank', '>', 0)]
         if active_only:
@@ -265,7 +296,9 @@ class OdooAdapter(IDataSourceAdapter):
 
     def get_cost_centers(self) -> list:
         if self._use_demo:
-            return self._pg().get_cost_centers()
+            rows = _query('cost_centers')
+            return [{'cost_center_code': r.get('id', ''),
+                     'cost_center_name': r.get('name', '')} for r in rows]
         try:
             rows = self._search_read('account.analytic.account', [], ['id','name','code'], 200)
             return [{'cost_center_code': r.get('code'), 'cost_center_name': r['name']} for r in rows]
@@ -275,7 +308,10 @@ class OdooAdapter(IDataSourceAdapter):
 
     def get_exchange_rates(self) -> list:
         if self._use_demo:
-            return self._pg().get_exchange_rates()
+            rows = _query('exchange_rates')
+            return [{'currency_code': r.get('name', ''),
+                     'rate': r.get('rate', 0),
+                     'rate_date': None} for r in rows]
         try:
             rows = self._search_read('res.currency.rate', [], ['id','currency_id','company_rate','name'], 100)
             return [{'currency_code': r['currency_id'][1] if r.get('currency_id') else None,
@@ -288,7 +324,15 @@ class OdooAdapter(IDataSourceAdapter):
 
     def get_purchase_requisitions(self, status: str = None, limit: int = 100) -> list:
         if self._use_demo:
-            return self._pg().get_purchase_requisitions(status=status, limit=limit)
+            where, params = '', ()
+            if status:
+                where = 'state = %s'
+                params = (status,)
+            rows = _query('purchase_requisitions', where=where, params=params, limit=limit)
+            return [{'pr_number': r.get('name', ''),
+                     'status': r.get('state', ''),
+                     'vendor_id': str(r.get('partner_id', '')),
+                     'requested_by': None} for r in rows]
         domain = []
         if status:
             domain.append(('state', '=', status))
@@ -303,7 +347,11 @@ class OdooAdapter(IDataSourceAdapter):
 
     def get_approved_suppliers(self, item_code: str = None, category: str = None) -> list:
         if self._use_demo:
-            return self._pg().get_approved_suppliers(item_code=item_code, category=category)
+            rows = _query('approved_supplier_list', where="supplier_rank ~ '^[0-9]+$' AND supplier_rank::int > 0")
+            return [{'vendor_id': str(r.get('id', '')),
+                     'vendor_name': r.get('name', ''),
+                     'email': r.get('email', ''),
+                     'approval_status': 'Approved'} for r in rows]
         domain = []
         if item_code:
             domain.append(('product_tmpl_id.default_code', '=', item_code))
@@ -319,7 +367,15 @@ class OdooAdapter(IDataSourceAdapter):
 
     def get_rfq_headers(self, status: str = None, limit: int = 50) -> list:
         if self._use_demo:
-            return self._pg().get_rfq_headers(status=status, limit=limit)
+            where, params = '', ()
+            if status:
+                where = 'state = %s'
+                params = (status,)
+            rows = _query('rfq_headers', where=where, params=params, limit=limit)
+            return [{'rfq_number': r.get('name', ''),
+                     'status': r.get('state', ''),
+                     'vendor_name': r.get('partner_id', ''),
+                     'amount_total': r.get('amount_total', 0)} for r in rows]
         domain = [('state', 'in', ['draft', 'sent'])]
         try:
             rows = self._search_read('purchase.order', domain,
@@ -333,7 +389,15 @@ class OdooAdapter(IDataSourceAdapter):
 
     def get_vendor_quotes(self, item_name: str = None, limit: int = 50) -> list:
         if self._use_demo:
-            return self._pg().get_vendor_quotes(item_name=item_name, limit=limit)
+            where, params = '', ()
+            if item_name:
+                where = 'name ILIKE %s'
+                params = (f'%{item_name}%',)
+            rows = _query('vendor_quotes', where=where, params=params, limit=limit)
+            return [{'rfq_reference': r.get('name', ''),
+                     'vendor_id': str(r.get('partner_id', '')),
+                     'total_quote_value': r.get('amount_total', 0),
+                     'status': r.get('state', '')} for r in rows]
         domain = [('order_id.state', 'in', ['draft', 'sent'])]
         if item_name:
             domain.append(('name', 'ilike', item_name))
@@ -350,7 +414,15 @@ class OdooAdapter(IDataSourceAdapter):
 
     def get_contracts(self, vendor_id: str = None, limit: int = 50) -> list:
         if self._use_demo:
-            return self._pg().get_contracts(vendor_id=vendor_id, limit=limit)
+            where, params = '', ()
+            if vendor_id:
+                where = 'id = %s'
+                params = (int(vendor_id),)
+            rows = _query('contracts', where=where, params=params, limit=limit)
+            return [{'contract_number': r.get('ref', ''),
+                     'vendor_name': r.get('name', ''),
+                     'email': r.get('email', ''),
+                     'status': 'Active' if r.get('active', True) else 'Inactive'} for r in rows]
         domain = [('state', '=', 'open')]
         if vendor_id:
             domain.append(('partner_id', '=', int(vendor_id)))
@@ -437,10 +509,12 @@ class OdooAdapter(IDataSourceAdapter):
 
     def get_ap_aging(self) -> list:
         if self._use_demo:
-            rows = _query('invoices', where="payment_state != 'paid'")
-            return [{'vendor_name': r.get('partner_id', ''),
-                     'outstanding_amount': r.get('amount_residual', 0),
-                     'due_date': str(r.get('invoice_date_due', ''))} for r in rows]
+            rows = _query('ap_aging', where="state != 'posted'")
+            return [{'invoice_number': r.get('name', ''),
+                     'vendor_id': str(r.get('partner_id', '')),
+                     'amount': r.get('amount_total', 0),
+                     'due_date': str(r.get('invoice_date_due', '')),
+                     'status': r.get('state', '')} for r in rows]
         try:
             rows = self._search_read('account.move', [('move_type','=','in_invoice'),('payment_state','!=','paid')],
                 ['id','name','partner_id','amount_residual','invoice_date_due'], 500)
@@ -453,7 +527,12 @@ class OdooAdapter(IDataSourceAdapter):
 
     def get_payment_proposals(self, limit: int = 50) -> list:
         if self._use_demo:
-            return self._pg().get_payment_proposals(limit=limit)
+            rows = _query('payment_proposals', limit=limit)
+            return [{'invoice_number': r.get('name', ''),
+                     'vendor_id': str(r.get('partner_id', '')),
+                     'amount': r.get('amount_total', 0),
+                     'due_date': str(r.get('invoice_date_due', '')),
+                     'status': r.get('state', '')} for r in rows]
         try:
             rows = self._search_read('account.payment', [('payment_type','=','outbound'),('state','=','draft')],
                 ['id','name','partner_id','amount','date'], limit)
@@ -467,7 +546,14 @@ class OdooAdapter(IDataSourceAdapter):
 
     def get_budget_vs_actuals(self, cost_center: str = None) -> list:
         if self._use_demo:
-            return self._pg().get_budget_vs_actuals(cost_center=cost_center)
+            where, params = '', ()
+            if cost_center:
+                where = 'name = %s'
+                params = (cost_center,)
+            rows = _query('budget', where=where, params=params)
+            return [{'cost_center': r.get('name', ''),
+                     'currency': r.get('currency_id', ''),
+                     'country': r.get('country_id', '')} for r in rows]
         domain = []
         if cost_center:
             domain.append(('analytic_account_id.code', '=', cost_center))
@@ -499,7 +585,12 @@ class OdooAdapter(IDataSourceAdapter):
 
     def get_vendor_performance(self, vendor_id: str = None) -> list:
         if self._use_demo:
-            return self._pg().get_vendor_performance(vendor_id=vendor_id)
+            where, params = '', ()
+            if vendor_id:
+                where = 'id = %s'
+                params = (int(vendor_id),)
+            rows = _query('vendor_performance', where=where, params=params)
+            return [_norm_vendor(r) for r in rows]
         domain = [('supplier_rank', '>', 0)]
         if vendor_id:
             domain.append(('id', '=', int(vendor_id)))
@@ -517,7 +608,15 @@ class OdooAdapter(IDataSourceAdapter):
 
     def get_inventory_status(self, item_code: str = None) -> list:
         if self._use_demo:
-            return self._pg().get_inventory_status(item_code=item_code)
+            where, params = '', ()
+            if item_code:
+                where = 'name ILIKE %s'
+                params = (f'%{item_code}%',)
+            rows = _query('inventory', where=where, params=params)
+            return [{'location': r.get('name', ''),
+                     'complete_name': r.get('complete_name', ''),
+                     'usage': r.get('usage', ''),
+                     'active': r.get('active', True)} for r in rows]
         domain = [('location_id.usage', '=', 'internal')]
         if item_code:
             domain.append(('product_id.default_code', '=', item_code))

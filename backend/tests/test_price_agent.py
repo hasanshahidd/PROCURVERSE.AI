@@ -56,7 +56,7 @@ async def test_competitive_price():
     assert result["status"] == "success", "Agent execution should succeed"
     assert result["result"]["action"] in ["approve", "approve_with_note"], "Competitive price should be approved"
     
-    print("\n✅ Test 1 PASSED: Competitive price approved")
+    print("\nTest 1 PASSED: Competitive price approved")
     return result
 
 
@@ -92,7 +92,7 @@ async def test_high_price_negotiation():
     if result["result"].get("total_value", 0) > 10000:
         assert result["result"]["action"] == "negotiate", "High-value high-price should require negotiation"
     
-    print("\n✅ Test 2 PASSED: High price flagged for negotiation")
+    print("\nTest 2 PASSED: High price flagged for negotiation")
     return result
 
 
@@ -126,9 +126,9 @@ async def test_single_source_risk():
     assert result["status"] == "success", "Agent execution should succeed"
     # Check for single-source warnings in context
     if result["decision"]["context"].get("is_single_source"):
-        print("\n⚠️ Single-source dependency detected (expected)")
+        print("\n️ Single-source dependency detected (expected)")
     
-    print("\n✅ Test 3 PASSED: Single-source risk evaluated")
+    print("\nTest 3 PASSED: Single-source risk evaluated")
     return result
 
 
@@ -162,7 +162,7 @@ async def test_excellent_price():
     assert result["status"] == "success", "Agent execution should succeed"
     assert result["result"]["action"] == "approve", "Excellent price should be approved"
     
-    print("\n✅ Test 4 PASSED: Excellent price approved")
+    print("\nTest 4 PASSED: Excellent price approved")
     return result
 
 
@@ -198,11 +198,11 @@ async def test_bulk_order_opportunity():
     # Check for volume discount recommendations
     alternatives = result["decision"]["context"].get("alternatives", [])
     if alternatives:
-        print(f"\n💡 Alternatives suggested: {len(alternatives)}")
+        print(f"\nAlternatives suggested: {len(alternatives)}")
         for alt in alternatives:
             print(f"  - {alt.get('description')}")
     
-    print("\n✅ Test 5 PASSED: Bulk order analyzed for volume discounts")
+    print("\nTest 5 PASSED: Bulk order analyzed for volume discounts")
     return result
 
 
@@ -231,18 +231,18 @@ async def run_all_tests():
             await test_func()
             results["passed"] += 1
         except AssertionError as e:
-            print(f"\n❌ {test_name} FAILED: {e}")
+            print(f"\n{test_name} FAILED: {e}")
             results["failed"] += 1
         except Exception as e:
-            print(f"\n❌ {test_name} ERROR: {e}")
+            print(f"\n{test_name} ERROR: {e}")
             results["failed"] += 1
     
     print("\n" + "="*100)
     print("TEST SUMMARY")
     print("="*100)
     print(f"Total Tests: {results['total']}")
-    print(f"✅ Passed: {results['passed']}")
-    print(f"❌ Failed: {results['failed']}")
+    print(f"Passed: {results['passed']}")
+    print(f"Failed: {results['failed']}")
     print(f"Success Rate: {(results['passed']/results['total'])*100:.1f}%")
     print("="*100)
     

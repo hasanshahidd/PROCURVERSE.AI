@@ -1,15 +1,13 @@
 """
 Hybrid Query Service
-Routes conversational queries to appropriate data sources:
-- Adapter layer for all ERP / P2P data (ERP-neutral, adapter-routed)
-- Odoo API (legacy path, only used when DATA_SOURCE=odoo adapter is live)
+Routes conversational queries to the active ERP adapter.
 
-All direct SQL removed. Use adapter methods exclusively.
+All data access goes through the adapter layer (ERP-neutral).
+No direct Odoo/SQL calls — the factory determines which backend to use
+based on the DATA_SOURCE environment variable.
 """
 
-import os
 from typing import List, Dict, Any, Optional
-from backend.services.odoo_client import get_odoo_client
 from backend.services.adapters.factory import get_adapter
 import logging
 
@@ -21,58 +19,63 @@ def _adapter():
 
 def query_odoo_data(query_type: str, filters: Dict[str, Any] = None) -> List[Dict]:
     """
-    Query Odoo data via API
-    
+    Query ERP data via the adapter layer (ERP-agnostic).
+
+    Routes to whichever adapter is active (demo_odoo → PostgreSQL, odoo → XML-RPC, etc.)
+    Falls back to Odoo XML-RPC only when adapter doesn't have the method.
+
     Args:
-        query_type: 'purchase_orders', 'vendors', 'products'
+        query_type: 'purchase_orders', 'vendors', 'products', 'invoices', etc.
         filters: Optional filters like {'state': 'draft', 'limit': 10}
     """
-    odoo = get_odoo_client()
+    adapter = _adapter()
     filters = filters or {}
-    
-    # Map common terms to Odoo states
-    STATE_MAPPING = {
-        'pending': 'draft',
-        'waiting': 'draft',
-        'new': 'draft',
-        'approved': 'purchase',
-        'confirmed': 'purchase',
-        'completed': 'done',
-        'finished': 'done',
-        'cancelled': 'cancel',
-        'rejected': 'cancel',
-    }
-    
-    if query_type == 'purchase_orders':
-        domain = []
-        if 'state' in filters:
-            state = filters['state'].lower()
-            # Map to Odoo state if needed
-            odoo_state = STATE_MAPPING.get(state, state)
-            domain.append(('state', '=', odoo_state))
-        if 'amount_min' in filters and filters.get('amount_min') is not None:
-            try:
-                domain.append(('amount_total', '>', float(filters.get('amount_min'))))
-            except (TypeError, ValueError):
-                pass
-        if 'amount_max' in filters and filters.get('amount_max') is not None:
-            try:
-                domain.append(('amount_total', '<', float(filters.get('amount_max'))))
-            except (TypeError, ValueError):
-                pass
-        return odoo.get_purchase_orders(
-            limit=filters.get('limit', 100),
-            domain=domain if domain else None
-        )
-    
-    elif query_type == 'vendors':
-        return odoo.get_vendors(limit=filters.get('limit', 100))
-    
-    elif query_type == 'products':
-        search = filters.get('search', '')
-        return odoo.get_products(limit=filters.get('limit', 100), search_term=search)
-    
-    else:
+    limit = filters.get('limit', 100)
+
+    try:
+        if query_type == 'purchase_orders':
+            return adapter.get_purchase_orders(status=filters.get('state'), limit=limit)
+
+        elif query_type == 'vendors':
+            return adapter.get_vendors(limit=limit)
+
+        elif query_type == 'products' or query_type == 'items':
+            return adapter.get_items(item_code=filters.get('search'))
+
+        elif query_type == 'invoices':
+            return adapter.get_vendor_invoices(invoice_no=filters.get('invoice_no'), limit=limit)
+
+        elif query_type == 'contracts':
+            return adapter.get_contracts(vendor_id=filters.get('vendor_id'), limit=limit)
+
+        elif query_type == 'grn' or query_type == 'goods_receipt':
+            return adapter.get_grn_headers(po_number=filters.get('po_number'), limit=limit)
+
+        elif query_type == 'budget':
+            return adapter.get_budget_vs_actuals(cost_center=filters.get('cost_center'))
+
+        elif query_type == 'spend' or query_type == 'spend_analytics':
+            return adapter.get_spend_analytics(period=filters.get('period'), limit=limit)
+
+        elif query_type == 'vendor_performance':
+            return adapter.get_vendor_performance(vendor_id=filters.get('vendor_id'))
+
+        elif query_type == 'approved_suppliers':
+            return adapter.get_approved_suppliers(item_code=filters.get('item_code'))
+
+        elif query_type == 'cost_centers':
+            return adapter.get_cost_centers()
+
+        elif query_type == 'exchange_rates':
+            return adapter.get_exchange_rates()
+
+        else:
+            logger.warning("query_odoo_data: unknown query_type '%s', returning empty", query_type)
+            return []
+
+    except Exception as e:
+        logger.error("query_odoo_data(%s) via adapter [%s] failed: %s",
+                     query_type, adapter.source_name(), e)
         return []
 
 

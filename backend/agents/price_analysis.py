@@ -143,7 +143,7 @@ class PriceAnalysisAgent(BaseAgent):
         ]
 
         if is_single_source:
-            reasoning_parts.append("⚠️ SINGLE-SOURCE DEPENDENCY DETECTED")
+            reasoning_parts.append("️ SINGLE-SOURCE DEPENDENCY DETECTED")
             reasoning_parts.append("Recommend identifying alternative vendors")
 
         if vendor_count == 0:
@@ -157,7 +157,7 @@ class PriceAnalysisAgent(BaseAgent):
         if action == "negotiate":
             potential_savings = total_value * (abs(price_variance) / 100)
             reasoning_parts.append(
-                f"💰 Negotiation opportunity: Potential savings ${potential_savings:,.2f}"
+                f"Negotiation opportunity: Potential savings ${potential_savings:,.2f}"
             )
 
         reasoning = " | ".join(reasoning_parts)

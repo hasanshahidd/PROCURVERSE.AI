@@ -109,24 +109,24 @@ class RiskAssessmentAgent(BaseAgent):
         urgency = observations.get("urgency", "Medium")
         
         # Calculate risk scores across dimensions
-        logger.info(f"[RiskAgent] 📊 Performing 4-dimensional risk assessment for {vendor_name}...")
+        logger.info(f"[RiskAgent] Performing 4-dimensional risk assessment for {vendor_name}...")
         logger.debug("[RiskAgent]   1️⃣ Assessing vendor risk (30% weight)...")
         vendor_risk = await self._assess_vendor_risk(vendor_id, vendor_name, observations)
-        logger.info(f"[RiskAgent]   ✅ Vendor Risk: {vendor_risk['score']:.1f}/100 - {len(vendor_risk['concerns'])} concerns")
+        logger.info(f"[RiskAgent]   Vendor Risk: {vendor_risk['score']:.1f}/100 - {len(vendor_risk['concerns'])} concerns")
         
         logger.debug("[RiskAgent]   2️⃣ Assessing financial risk (30% weight)...")
         financial_risk = await self._assess_financial_risk(budget, department, observations)
-        logger.info(f"[RiskAgent]   ✅ Financial Risk: {financial_risk['score']:.1f}/100")
+        logger.info(f"[RiskAgent]   Financial Risk: {financial_risk['score']:.1f}/100")
         
         logger.debug("[RiskAgent]   3️⃣ Assessing compliance risk (25% weight)...")
         compliance_risk = await self._assess_compliance_risk(category, budget, observations)
-        logger.info(f"[RiskAgent]   ✅ Compliance Risk: {compliance_risk['score']:.1f}/100")
+        logger.info(f"[RiskAgent]   Compliance Risk: {compliance_risk['score']:.1f}/100")
         
         logger.debug("[RiskAgent]   4️⃣ Assessing operational risk (15% weight)...")
         operational_risk = await self._assess_operational_risk(
             vendor_name, category, urgency, observations
         )
-        logger.info(f"[RiskAgent]   ✅ Operational Risk: {operational_risk['score']:.1f}/100")
+        logger.info(f"[RiskAgent]   Operational Risk: {operational_risk['score']:.1f}/100")
         
         # Calculate weighted total risk (0-100)
         total_risk_score = (
@@ -135,7 +135,7 @@ class RiskAssessmentAgent(BaseAgent):
             compliance_risk['score'] * 0.25 +
             operational_risk['score'] * 0.15
         )
-        logger.info(f"[RiskAgent] 🎯 TOTAL WEIGHTED RISK SCORE: {total_risk_score:.1f}/100")
+        logger.info(f"[RiskAgent] TOTAL WEIGHTED RISK SCORE: {total_risk_score:.1f}/100")
         
         # Determine risk level
         risk_level, risk_color = self._determine_risk_level(total_risk_score)
@@ -285,27 +285,28 @@ class RiskAssessmentAgent(BaseAgent):
                     "urgency": context.get("urgency")
                 }
                 
-                # Call the tool to store risk data
-                storage_result_json = store_tool.func(json.dumps(risk_data))
+                # Call the tool to store risk data (run in thread to avoid blocking event loop)
+                import asyncio as _aio
+                storage_result_json = await _aio.to_thread(store_tool.func, json.dumps(risk_data))
                 storage_result = json.loads(storage_result_json)
                 
                 if storage_result.get("success"):
                     logger.info(
-                        f"[RiskAgent] ✅ Risk assessment stored: ID={storage_result['assessment_id']}, "
+                        f"[RiskAgent] Risk assessment stored: ID={storage_result['assessment_id']}, "
                         f"PR={pr_number}, Risk={risk_level}, Blocked={blocked_po_creation}"
                     )
                     result["assessment_id"] = storage_result["assessment_id"]
                     result["stored_in_database"] = True
                 else:
-                    logger.error(f"[RiskAgent] ❌ Failed to store risk assessment: {storage_result.get('error')}")
+                    logger.error(f"[RiskAgent] Failed to store risk assessment: {storage_result.get('error')}")
                     result["stored_in_database"] = False
                     result["storage_error"] = storage_result.get("error")
             else:
-                logger.warning("[RiskAgent] ⚠️ store_risk_assessment tool not found")
+                logger.warning("[RiskAgent] ️ store_risk_assessment tool not found")
                 result["stored_in_database"] = False
         
         except Exception as e:
-            logger.error(f"[RiskAgent] ❌ Error storing risk assessment: {e}")
+            logger.error(f"[RiskAgent] Error storing risk assessment: {e}")
             result["stored_in_database"] = False
             result["storage_error"] = str(e)
         
@@ -321,7 +322,7 @@ class RiskAssessmentAgent(BaseAgent):
         # Add warning if PO creation was blocked
         if blocked_po_creation:
             logger.warning(
-                f"[RiskAgent] 🚫 CRITICAL RISK: PO creation BLOCKED for {pr_number}. "
+                f"[RiskAgent] CRITICAL RISK: PO creation BLOCKED for {pr_number}. "
                 f"Risk score: {risk_assessment.get('total_score'):.1f}/100. "
                 f"Human review required immediately."
             )
@@ -753,8 +754,9 @@ class RiskAssessmentAgent(BaseAgent):
     async def _get_vendor_data(self, vendor_id: int) -> Optional[Dict]:
         """Fetch vendor data from Odoo"""
         try:
+            import asyncio as _aio
             vendor_tool = next(t for t in self.tools if t.name == "get_vendors")
-            result_str = vendor_tool.func(limit=50)
+            result_str = await _aio.to_thread(vendor_tool.func, limit=50)
             result = json.loads(result_str)
             
             if result.get("success"):
@@ -768,8 +770,9 @@ class RiskAssessmentAgent(BaseAgent):
     async def _resolve_vendor_by_name(self, vendor_name: str) -> Optional[Dict]:
         """Resolve a vendor name to vendor data by fuzzy-matching Odoo vendors."""
         try:
+            import asyncio as _aio
             vendor_tool = next(t for t in self.tools if t.name == "get_vendors")
-            result_str = vendor_tool.func(limit=50)
+            result_str = await _aio.to_thread(vendor_tool.func, limit=50)
             result = json.loads(result_str)
             
             if result.get("success"):
@@ -796,9 +799,10 @@ class RiskAssessmentAgent(BaseAgent):
         risk_points = 0
         concerns = []
         try:
+            import asyncio as _aio
             po_tool = next((t for t in self.tools if t.name == "get_purchase_orders"), None)
             if po_tool:
-                result_str = po_tool.func(limit=50)
+                result_str = await _aio.to_thread(po_tool.func, limit=50)
                 result = json.loads(result_str)
                 pos = result.get("purchase_orders", [])
                 vendor_pos = [
@@ -827,9 +831,10 @@ class RiskAssessmentAgent(BaseAgent):
         if not category or not vendor_name:
             return False
         try:
+            import asyncio as _aio
             vendor_tool = next((t for t in self.tools if t.name == "get_vendors"), None)
             if vendor_tool:
-                result_str = vendor_tool.func(limit=100)
+                result_str = await _aio.to_thread(vendor_tool.func, limit=100)
                 result = json.loads(result_str)
                 vendors = result.get("vendors", [])
                 cat_lower = category.lower()
@@ -847,8 +852,10 @@ class RiskAssessmentAgent(BaseAgent):
     async def _check_budget_status(self, department: str, amount: float, budget_category: str = "OPEX") -> Dict[str, Any]:
         """Check budget availability"""
         try:
+            import asyncio as _aio
             budget_tool = next(t for t in self.tools if t.name == "check_budget_availability")
-            result_str = budget_tool.func(
+            result_str = await _aio.to_thread(
+                budget_tool.func,
                 department=department,
                 amount=amount,
                 budget_category=budget_category
@@ -858,7 +865,7 @@ class RiskAssessmentAgent(BaseAgent):
             # Check if query was successful
             if not result.get("success", False):
                 # No budget found for this department - treat as HIGH RISK
-                logger.warning(f"[RiskAgent] ⚠️ Budget not found for {department} {budget_category}")
+                logger.warning(f"[RiskAgent] ️ Budget not found for {department} {budget_category}")
                 return {"available": False, "utilization": 100}  # 100% = no budget available
 
             # Use correct keys from tool response
@@ -877,9 +884,10 @@ class RiskAssessmentAgent(BaseAgent):
     async def _get_approval_requirements(self, department: str, amount: float) -> Dict[str, Any]:
         """Get approval chain requirements"""
         try:
+            import asyncio as _aio
             approval_tool = next(t for t in self.tools if t.name == "get_approval_chain")
             # Note: Database tool uses 'budget' parameter, not 'amount'
-            result_str = approval_tool.func(department=department, budget=amount)
+            result_str = await _aio.to_thread(approval_tool.func, department=department, budget=amount)
             result = json.loads(result_str)
             
             approvers = result.get("approvers", [])

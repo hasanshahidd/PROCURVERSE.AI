@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { useLocation } from "wouter";
 import { apiFetch } from "@/lib/api";
-import { DollarSign, Loader2, FileText } from "lucide-react";
+import { DollarSign, Loader2, FileText, Workflow, ArrowRight, AlertCircle, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,6 +22,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useSession } from "@/hooks/useSession";
+
+// Read ?session=:id from URL — if present, this page enters session-observer mode
+function readSessionIdFromUrl(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  const params = new URLSearchParams(window.location.search);
+  const sid = params.get("session");
+  return sid && sid.trim() ? sid.trim() : undefined;
+}
 
 // Demo data fallback
 const DEMO_PAYMENTS = [
@@ -88,9 +98,35 @@ function formatCurrency(amount: number, currency: string) {
 }
 
 export default function PaymentExecutionPage() {
+  const [, setLocation] = useLocation();
+  const sessionId = useMemo(() => readSessionIdFromUrl(), []);
+  const {
+    session,
+    gate,
+    status: sessionStatus,
+    currentPhase,
+    loading: sessionLoading,
+    resume,
+  } = useSession(sessionId);
+  const inSessionMode = !!sessionId;
+
+  // Future-ready: when HF-3 extracts payment_release into a dedicated gate,
+  // this branch will render the actual release UI. Until then, the page is
+  // observer-only when mounted with ?session=:id.
+  const paymentGate =
+    inSessionMode && gate?.gate_type === "payment_release" ? gate : null;
+  const inPaymentPhase =
+    inSessionMode &&
+    (currentPhase === "payment_readiness" ||
+      currentPhase === "payment_execution" ||
+      currentPhase === "completed");
+  const summary = (session?.request_summary as Record<string, any>) || {};
+  const sessionPrData = (summary.pr_data as Record<string, any>) || {};
+
   const [payments, setPayments] = useState(DEMO_PAYMENTS);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [releasing, setReleasing] = useState(false);
 
   // Form state
   const [vendor, setVendor] = useState("");
@@ -102,6 +138,22 @@ export default function PaymentExecutionPage() {
   useEffect(() => {
     fetchPayments();
   }, []);
+
+  async function handleReleasePayment() {
+    if (!paymentGate) return;
+    setReleasing(true);
+    try {
+      const result = await resume(paymentGate.gate_id, "release_payment", {
+        released_by: "Finance (UI)",
+        notes: "Payment released from Payment Execution page",
+      });
+      if (!result.success) {
+        alert(`Failed to release payment: ${result.error}`);
+      }
+    } finally {
+      setReleasing(false);
+    }
+  }
 
   async function fetchPayments() {
     setLoading(true);
@@ -192,6 +244,152 @@ export default function PaymentExecutionPage() {
           </p>
         </div>
       </div>
+
+      {/* Session-observer banner — shown when ?session=:id is in URL */}
+      {inSessionMode && (
+        <Card className="border-2 border-blue-500/40 bg-blue-50 dark:bg-blue-950/20">
+          <CardHeader className="pb-3">
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div className="flex items-start gap-3 flex-1 min-w-0">
+                <div className="rounded-full bg-blue-600 p-2 shrink-0">
+                  <Workflow className="h-5 w-5 text-white" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <CardTitle className="text-base flex items-center gap-2 flex-wrap">
+                    P2P Workflow — Payment Phase
+                    {sessionLoading ? (
+                      <Badge variant="outline">
+                        <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                        Loading…
+                      </Badge>
+                    ) : (
+                      <>
+                        <Badge className="bg-blue-600">{currentPhase}</Badge>
+                        <Badge
+                          variant="outline"
+                          className={
+                            sessionStatus === "completed"
+                              ? "bg-green-50 text-green-700 border-green-300"
+                              : sessionStatus === "failed"
+                              ? "bg-red-50 text-red-700 border-red-300"
+                              : "bg-blue-50 text-blue-700 border-blue-300"
+                          }
+                        >
+                          {sessionStatus}
+                        </Badge>
+                      </>
+                    )}
+                  </CardTitle>
+                  <CardDescription className="text-xs font-mono mt-1 truncate">
+                    Session {sessionId}
+                  </CardDescription>
+                  {(summary.request as string) && (
+                    <CardDescription className="text-sm mt-1">
+                      {summary.request as string}
+                    </CardDescription>
+                  )}
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setLocation(`/sessions/${sessionId}`)}
+              >
+                Open Session View
+                <ArrowRight className="h-3 w-3 ml-1" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {/* PR / vendor / amount snapshot from session */}
+            {Object.keys(sessionPrData).length > 0 && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs bg-white dark:bg-slate-900 rounded-md p-3 border">
+                <div>
+                  <div className="text-muted-foreground">Department</div>
+                  <div className="font-medium">{sessionPrData.department || "—"}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Item</div>
+                  <div className="font-medium truncate">
+                    {sessionPrData.product_name || "—"}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Quantity</div>
+                  <div className="font-medium">{sessionPrData.quantity || "—"}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Amount</div>
+                  <div className="font-medium">
+                    {sessionPrData.budget
+                      ? `$${Number(sessionPrData.budget).toLocaleString()}`
+                      : "—"}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Active payment_release gate (post-HF-3 future) */}
+            {paymentGate && (
+              <div className="rounded-md border-2 border-blue-600 bg-blue-100/50 dark:bg-blue-900/20 p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <AlertCircle className="h-4 w-4 text-blue-700" />
+                  <div className="text-sm font-semibold">
+                    Awaiting payment release
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                  disabled={releasing}
+                  onClick={handleReleasePayment}
+                >
+                  {releasing ? (
+                    <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                  ) : (
+                    <DollarSign className="h-3 w-3 mr-1" />
+                  )}
+                  Release Payment
+                </Button>
+              </div>
+            )}
+
+            {/* Phase status — observer mode (no gate yet for payment_readiness/execution) */}
+            {!paymentGate && inPaymentPhase && (
+              <div className="rounded-md bg-white dark:bg-slate-900 border p-3 text-sm flex items-start gap-2">
+                {sessionStatus === "completed" ? (
+                  <>
+                    <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
+                    <div>
+                      Payment phase complete. The session is fully settled —
+                      see the timeline in the Session View for the full audit
+                      log.
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin text-blue-600 mt-0.5 shrink-0" />
+                    <div>
+                      Session is in <strong>{currentPhase}</strong>. The
+                      orchestrator is processing payment readiness checks
+                      automatically — the live timeline is available in the
+                      Session View.
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {!paymentGate && !inPaymentPhase && !sessionLoading && (
+              <div className="rounded-md bg-white dark:bg-slate-900 border p-3 text-xs text-muted-foreground">
+                This session is in <strong>{currentPhase}</strong> — not yet at
+                the payment phase. Open the Session View to see the active
+                step.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Stats Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

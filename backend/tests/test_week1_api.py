@@ -35,13 +35,13 @@ def test_invoice_matching():
         print(f"Status: {response.status_code}")
         if response.status_code == 200:
             result = response.json()
-            print(f"✅ Response: {json.dumps(result, indent=2)}")
+            print(f"Response: {json.dumps(result, indent=2)}")
             return True
         else:
-            print(f"❌ Error: {response.text}")
+            print(f"Error: {response.text}")
             return False
     except Exception as e:
-        print(f"❌ Exception: {e}")
+        print(f"Exception: {e}")
         return False
 
 def test_spend_analytics():
@@ -64,15 +64,15 @@ def test_spend_analytics():
         print(f"Status: {response.status_code}")
         if response.status_code == 200:
             result = response.json()
-            print(f"✅ Response received (truncated):")
+            print(f"Response received (truncated):")
             print(f"   Status: {result.get('status', 'N/A')}")
             print(f"   Agent: {result.get('agent', 'N/A')}")
             return True
         else:
-            print(f"❌ Error: {response.text}")
+            print(f"Error: {response.text}")
             return False
     except Exception as e:
-        print(f"❌ Exception: {e}")
+        print(f"Exception: {e}")
         return False
 
 def test_inventory_check():
@@ -95,15 +95,15 @@ def test_inventory_check():
         print(f"Status: {response.status_code}")
         if response.status_code == 200:
             result = response.json()
-            print(f"✅ Response received:")
+            print(f"Response received:")
             print(f"   Status: {result.get('status', 'N/A')}")
             print(f"   Agent: {result.get('agent', 'N/A')}")
             return True
         else:
-            print(f"❌ Error: {response.text}")
+            print(f"Error: {response.text}")
             return False
     except Exception as e:
-        print(f"❌ Exception: {e}")
+        print(f"Exception: {e}")
         return False
 
 def test_system_status():
@@ -115,15 +115,15 @@ def test_system_status():
         print(f"Status: {response.status_code}")
         if response.status_code == 200:
             result = response.json()
-            print(f"✅ System Status:")
+            print(f"System Status:")
             print(f"   Total Agents: {result.get('total_agents', 'N/A')}")
             print(f"   Active Agents: {result.get('active_agents', 'N/A')}")
             return True
         else:
-            print(f"❌ Error: {response.text}")
+            print(f"Error: {response.text}")
             return False
     except Exception as e:
-        print(f"❌ Exception: {e}")
+        print(f"Exception: {e}")
         return False
 
 def main():
@@ -135,9 +135,9 @@ def main():
     results = []
     
     # Check system status first
-    print("\n🔍 Checking if server is ready...")
+    print("\nChecking if server is ready...")
     if not test_system_status():
-        print("\n❌ Server not ready or agents not loaded!")
+        print("\nServer not ready or agents not loaded!")
         return
     
     # Test each agent
@@ -151,20 +151,20 @@ def main():
     print("="*80 + "\n")
     
     for agent_name, passed in results:
-        status = "✅ PASSED" if passed else "❌ FAILED"
+        status = "PASSED" if passed else "FAILED"
         print(f"  {agent_name}: {status}")
     
     all_passed = all(result[1] for result in results)
     
     if all_passed:
         print(f"\n{'='*80}")
-        print(" "*15 + "🎉 ALL TESTS PASSED - WEEK 1 VALIDATED! 🎉")
+        print(" "*15 + "ALL TESTS PASSED - WEEK 1 VALIDATED! ")
         print(" "*10 + "InvoiceMatchingAgent | SpendAnalyticsAgent | InventoryCheckAgent")
         print(" "*20 + "11 of 17 Agents Operational (65%)")
         print(f"{'='*80}\n")
     else:
         print(f"\n{'='*80}")
-        print(" "*20 + "⚠️ SOME TESTS FAILED")
+        print(" "*20 + "️ SOME TESTS FAILED")
         print(f"{'='*80}\n")
 
 if __name__ == "__main__":

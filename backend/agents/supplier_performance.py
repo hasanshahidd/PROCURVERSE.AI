@@ -140,7 +140,8 @@ class SupplierPerformanceAgent(BaseAgent):
             try:
                 vendors_tool = next((tool for tool in self.tools if tool.name == "get_vendors"), None)
                 if vendors_tool:
-                    vendors_raw = vendors_tool.func(None, 200)
+                    import asyncio as _aio
+                    vendors_raw = await _aio.to_thread(vendors_tool.func, None, 200)
                     vendors_data = json.loads(vendors_raw)
                     vendors = vendors_data.get("vendors", []) if vendors_data.get("success") else []
 

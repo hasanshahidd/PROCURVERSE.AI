@@ -224,7 +224,7 @@ def run_migration(verbose: bool = True) -> Dict[str, int]:
             with conn.cursor() as ver_cur:
                 ver_cur.execute("SELECT COUNT(*) FROM exchange_rates;")
                 final_count = ver_cur.fetchone()[0]
-                _log(verbose, f"  [✓] exchange_rates table now has {final_count} rows")
+                _log(verbose, f"  [] exchange_rates table now has {final_count} rows")
 
     except Exception as exc:
         logger.error("[sprint8_fx_rates_seed] Migration failed: %s", exc)

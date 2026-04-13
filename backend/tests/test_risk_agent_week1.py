@@ -38,7 +38,7 @@ def print_test_header(test_name: str):
 
 def print_result(passed: bool, message: str):
     """Print test result"""
-    symbol = "✅" if passed else "❌"
+    symbol = "" if passed else ""
     status = "PASS" if passed else "FAIL"
     print(f"{symbol} {status}: {message}")
 
@@ -93,20 +93,20 @@ async def test_low_risk_scenario():
         "requester_name": "John Doe"
     }
     
-    print(f"\n📋 PR Data:")
+    print(f"\nPR Data:")
     print(f"   PR Number: {pr_data['pr_number']}")
     print(f"   Vendor: {pr_data['vendor_name']}")
     print(f"   Budget: ${pr_data['budget']:,}")
     print(f"   Department: {pr_data['department']}")
     
     # Execute risk assessment
-    print("\n🔍 Running risk assessment...")
+    print("\nRunning risk assessment...")
     result = await agent.execute({
         "request": "Assess procurement risks for low-value routine purchase",
         "pr_data": pr_data
     })
     
-    print(f"\n📊 Risk Assessment Results:")
+    print(f"\nRisk Assessment Results:")
     print(f"   Risk Score: {result.get('risk_score', 0):.1f}/100")
     print(f"   Risk Level: {result.get('risk_level', 'UNKNOWN')}")
     print(f"   Can Proceed: {result.get('can_proceed', False)}")
@@ -114,7 +114,7 @@ async def test_low_risk_scenario():
     print(f"   Requires Human Review: {result.get('requires_human_review', False)}")
     
     # Verify database storage
-    print("\n💾 Verifying database storage...")
+    print("\nVerifying database storage...")
     db_record = verify_database_storage(pr_data['pr_number'])
     
     # Assertions
@@ -147,7 +147,7 @@ async def test_low_risk_scenario():
         print(f"   - Blocked: {db_record['blocked_po_creation']}")
     
     all_passed = all(tests_passed)
-    print(f"\n{'✅ ALL TESTS PASSED' if all_passed else '❌ SOME TESTS FAILED'}: {sum(tests_passed)}/{len(tests_passed)}")
+    print(f"\n{'ALL TESTS PASSED' if all_passed else 'SOME TESTS FAILED'}: {sum(tests_passed)}/{len(tests_passed)}")
     
     return all_passed
 
@@ -177,19 +177,19 @@ async def test_medium_risk_scenario():
         "requester_name": "Jane Smith"
     }
     
-    print(f"\n📋 PR Data:")
+    print(f"\nPR Data:")
     print(f"   PR Number: {pr_data['pr_number']}")
     print(f"   Vendor: {pr_data['vendor_name']}")
     print(f"   Budget: ${pr_data['budget']:,}")
     print(f"   Urgency: {pr_data['priority_level']}")
     
-    print("\n🔍 Running risk assessment...")
+    print("\nRunning risk assessment...")
     result = await agent.execute({
         "request": "Assess procurement risks for urgent moderate-value purchase",
         "pr_data": pr_data
     })
     
-    print(f"\n📊 Risk Assessment Results:")
+    print(f"\nRisk Assessment Results:")
     print(f"   Risk Score: {result.get('risk_score', 0):.1f}/100")
     print(f"   Risk Level: {result.get('risk_level', 'UNKNOWN')}")
     print(f"   Can Proceed: {result.get('can_proceed', False)}")
@@ -216,7 +216,7 @@ async def test_medium_risk_scenario():
     tests_passed.append(db_stored)
     
     all_passed = all(tests_passed)
-    print(f"\n{'✅ ALL TESTS PASSED' if all_passed else '❌ SOME TESTS FAILED'}: {sum(tests_passed)}/{len(tests_passed)}")
+    print(f"\n{'ALL TESTS PASSED' if all_passed else 'SOME TESTS FAILED'}: {sum(tests_passed)}/{len(tests_passed)}")
     
     return all_passed
 
@@ -246,19 +246,19 @@ async def test_high_risk_scenario():
         "requester_name": "Mike Manager"
     }
     
-    print(f"\n📋 PR Data:")
+    print(f"\nPR Data:")
     print(f"   PR Number: {pr_data['pr_number']}")
     print(f"   Vendor: {pr_data['vendor_name']}")
     print(f"   Budget: ${pr_data['budget']:,}")
     print(f"   Category: {pr_data['supplier_category']}")
     
-    print("\n🔍 Running risk assessment...")
+    print("\nRunning risk assessment...")
     result = await agent.execute({
         "request": "Assess procurement risks for large urgent purchase from new vendor",
         "pr_data": pr_data
     })
     
-    print(f"\n📊 Risk Assessment Results:")
+    print(f"\nRisk Assessment Results:")
     print(f"   Risk Score: {result.get('risk_score', 0):.1f}/100")
     print(f"   Risk Level: {result.get('risk_level', 'UNKNOWN')}")
     print(f"   Can Proceed: {result.get('can_proceed', False)}")
@@ -295,7 +295,7 @@ async def test_high_risk_scenario():
     tests_passed.append(db_stored)
     
     all_passed = all(tests_passed)
-    print(f"\n{'✅ ALL TESTS PASSED' if all_passed else '❌ SOME TESTS FAILED'}: {sum(tests_passed)}/{len(tests_passed)}")
+    print(f"\n{'ALL TESTS PASSED' if all_passed else 'SOME TESTS FAILED'}: {sum(tests_passed)}/{len(tests_passed)}")
     
     return all_passed
 
@@ -326,24 +326,24 @@ async def test_critical_risk_scenario():
         "requester_name": "Urgent User"
     }
     
-    print(f"\n📋 PR Data:")
+    print(f"\nPR Data:")
     print(f"   PR Number: {pr_data['pr_number']}")
     print(f"   Vendor: {pr_data['vendor_name']} (UNVERIFIED)")
     print(f"   Budget: ${pr_data['budget']:,}")
     print(f"   Urgency: {pr_data['priority_level']}")
     print(f"   Single Source: Yes (Quantity: 1)")
     
-    print("\n🔍 Running risk assessment...")
+    print("\nRunning risk assessment...")
     result = await agent.execute({
         "request": "Assess procurement risks for urgent high-value purchase from unknown vendor",
         "pr_data": pr_data
     })
     
-    print(f"\n📊 Risk Assessment Results:")
+    print(f"\nRisk Assessment Results:")
     print(f"   Risk Score: {result.get('risk_score', 0):.1f}/100")
     print(f"   Risk Level: {result.get('risk_level', 'UNKNOWN')}")
     print(f"   Can Proceed: {result.get('can_proceed', False)}")
-    print(f"   🚫 PO BLOCKED: {result.get('blocked_po_creation', False)}")
+    print(f"   PO BLOCKED: {result.get('blocked_po_creation', False)}")
     print(f"   Human Review Required: {result.get('requires_human_review', False)}")
     
     if result.get('mitigations'):
@@ -362,7 +362,7 @@ async def test_critical_risk_scenario():
     
     # Check PO IS blocked (THIS IS THE KEY TEST!)
     po_blocked = result.get('blocked_po_creation', False)
-    print_result(po_blocked, "🚫 PO CREATION BLOCKED (Critical risk protection)")
+    print_result(po_blocked, "PO CREATION BLOCKED (Critical risk protection)")
     tests_passed.append(po_blocked)
     
     # Check human review required
@@ -388,10 +388,10 @@ async def test_critical_risk_scenario():
         print(f"\n   Database Record:")
         print(f"   - Risk Score: {db_record['total_risk_score']}")
         print(f"   - Risk Level: {db_record['risk_level']}")
-        print(f"   - 🚫 BLOCKED: {db_record['blocked_po_creation']}")
+        print(f"   - BLOCKED: {db_record['blocked_po_creation']}")
     
     all_passed = all(tests_passed)
-    print(f"\n{'✅ ALL TESTS PASSED' if all_passed else '❌ SOME TESTS FAILED'}: {sum(tests_passed)}/{len(tests_passed)}")
+    print(f"\n{'ALL TESTS PASSED' if all_passed else 'SOME TESTS FAILED'}: {sum(tests_passed)}/{len(tests_passed)}")
     
     return all_passed
 
@@ -404,27 +404,27 @@ async def run_all_tests():
     print("="*80)
     
     # Verify Odoo connection
-    print("\n🔍 Verifying Odoo connection...")
+    print("\nVerifying Odoo connection...")
     try:
         odoo = get_odoo_client()
         vendors = odoo.get_vendors(limit=5)
-        print(f"   ✅ Odoo connected: {len(vendors)} vendors found")
+        print(f"   Odoo connected: {len(vendors)} vendors found")
     except Exception as e:
-        print(f"   ❌ Odoo connection failed: {e}")
+        print(f"   Odoo connection failed: {e}")
         return
     
     # Verify database table exists
-    print("\n🔍 Verifying po_risk_assessments table...")
+    print("\nVerifying po_risk_assessments table...")
     try:
         conn = psycopg2.connect(DATABASE_URL)
         cur = conn.cursor()
         cur.execute("SELECT COUNT(*) FROM po_risk_assessments")
         count = cur.fetchone()[0]
-        print(f"   ✅ Table exists with {count} existing records")
+        print(f"   Table exists with {count} existing records")
         cur.close()
         conn.close()
     except Exception as e:
-        print(f"   ❌ Table verification failed: {e}")
+        print(f"   Table verification failed: {e}")
         return
     
     # Run all tests
@@ -445,7 +445,7 @@ async def run_all_tests():
     print("="*80)
     
     for test_name, passed in results:
-        status = "✅ PASS" if passed else "❌ FAIL"
+        status = "PASS" if passed else "FAIL"
         print(f"{status}: {test_name}")
     
     total_passed = sum(1 for _, passed in results if passed)
@@ -453,15 +453,15 @@ async def run_all_tests():
     
     print("\n" + "="*80)
     if total_passed == total_tests:
-        print(f"🎉 SUCCESS: ALL {total_tests} TESTS PASSED!")
-        print("\n✅ Risk Assessment Agent Integration Complete:")
+        print(f"SUCCESS: ALL {total_tests} TESTS PASSED!")
+        print("\nRisk Assessment Agent Integration Complete:")
         print("   - Risk scores calculated accurately")
         print("   - Risk assessments stored in database")
         print("   - CRITICAL risks block PO creation")
         print("   - All risk levels handled correctly")
     else:
-        print(f"⚠️ PARTIAL SUCCESS: {total_passed}/{total_tests} tests passed")
-        print("\n❌ Failed tests need investigation")
+        print(f"️ PARTIAL SUCCESS: {total_passed}/{total_tests} tests passed")
+        print("\nFailed tests need investigation")
     print("="*80)
 
 

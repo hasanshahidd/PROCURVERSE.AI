@@ -20,11 +20,33 @@ logger = logging.getLogger(__name__)
 
 _SUFFIX = 'dynamics'
 
+_TABLE_REMAP = {
+    'vendors_dynamics':              'd365_vendors',
+    'po_headers_dynamics':           'd365_purchase_orders',
+    'items_dynamics':                'd365_products',
+    'invoices_dynamics':             'd365_journal_entries',
+    'grn_headers_dynamics':          'd365_purchase_orders',
+    'spend_dynamics':                'd365_purchase_orders',
+    'cost_centers_dynamics':         'd365_dimensions',
+    'exchange_rates_dynamics':       'd365_legal_entities',
+    'purchase_requisitions_dynamics':'d365_purchase_orders',
+    'approved_suppliers_dynamics':   'd365_vendors',
+    'rfq_headers_dynamics':          'd365_purchase_orders',
+    'vendor_quotes_dynamics':        'd365_item_prices',
+    'contracts_dynamics':            'd365_purchase_orders',
+    'ap_aging_dynamics':             'd365_journal_entries',
+    'payment_proposals_dynamics':    'd365_journal_entries',
+    'budget_dynamics':               'd365_dimensions',
+    'vendor_performance_dynamics':   'd365_vendors',
+    'inventory_dynamics':            'd365_warehouses',
+}
+
 
 def _query(table_base: str, where: str = '', params: tuple = (), limit: int = 500) -> list:
     from backend.services.nmi_data_service import get_conn
     from psycopg2.extras import RealDictCursor
-    table = f'{table_base}_{_SUFFIX}'
+    raw_table = f'{table_base}_{_SUFFIX}'
+    table = _TABLE_REMAP.get(raw_table, raw_table)
     conn = None
     try:
         conn = get_conn()
@@ -46,11 +68,14 @@ def _query(table_base: str, where: str = '', params: tuple = (), limit: int = 50
 
 
 def _norm_vendor(r: dict) -> dict:
+    name = r.get('vendorname') or r.get('vendname') or r.get('name') or r.get('vendor_name') or ''
+    vid = r.get('vendoraccount') or r.get('vendaccount') or r.get('vendor_id') or r.get('_row_id', '')
     return {
-        'vendor_id': str(r.get('vendoraccount', '')),
-        'vendor_name': r.get('vendorname', ''),
-        'email': r.get('email', ''),
-        'phone': r.get('phone', ''),
+        'vendor_id': str(vid),
+        'vendor_name': name,
+        'name': name,
+        'email': r.get('email') or r.get('primaryemail') or '',
+        'phone': r.get('phone') or r.get('primaryphone') or '',
         'country': r.get('countryregion', ''),
         'city': r.get('city', ''),
         'status': 'Active' if r.get('onhold', 'No') == 'No' else 'On Hold',
@@ -124,6 +149,134 @@ def _norm_spend(r: dict) -> dict:
         'period': str(r.get('orderdate', ''))[:7],
         'cost_center': r.get('department', ''),
         'currency': r.get('currencycode', 'USD'),
+    }
+
+
+def _norm_cost_center(r: dict) -> dict:
+    return {
+        'cost_center_code': r.get('dimensionvalue', ''),
+        'cost_center_name': r.get('dimensionname', ''),
+        'dimension_type': r.get('dimensiontype', ''),
+        'is_active': r.get('isactive', True),
+    }
+
+
+def _norm_exchange_rate(r: dict) -> dict:
+    return {
+        'currency_code': r.get('currencycode', ''),
+        'entity_name': r.get('name', ''),
+        'country': r.get('countryregionid', ''),
+        'vat_number': r.get('vatnum', ''),
+    }
+
+
+def _norm_pr(r: dict) -> dict:
+    return {
+        'pr_number': r.get('purchid', ''),
+        'status': r.get('purchstatus', ''),
+        'vendor_id': r.get('vendaccount', ''),
+        'currency': r.get('currencycode', 'USD'),
+        'order_date': str(r.get('orderdate', '')),
+        'total_amount': r.get('totalamount', 0),
+    }
+
+
+def _norm_approved_supplier(r: dict) -> dict:
+    return {
+        'vendor_id': str(r.get('vendaccount', '')),
+        'vendor_name': r.get('vendname', ''),
+        'email': r.get('email', ''),
+        'phone': r.get('phone', ''),
+        'country': r.get('countryregionid', ''),
+        'currency': r.get('currency', 'USD'),
+        'payment_terms': r.get('paymtermid', ''),
+        'status': 'Approved',
+    }
+
+
+def _norm_rfq(r: dict) -> dict:
+    return {
+        'rfq_number': r.get('purchid', ''),
+        'status': r.get('purchstatus', ''),
+        'vendor_id': r.get('vendaccount', ''),
+        'currency': r.get('currencycode', 'USD'),
+        'order_date': str(r.get('orderdate', '')),
+        'total_amount': r.get('totalamount', 0),
+    }
+
+
+def _norm_vendor_quote(r: dict) -> dict:
+    return {
+        'item_code': r.get('itemid', ''),
+        'price_type': r.get('pricetype', ''),
+        'currency': r.get('currencycode', 'USD'),
+        'unit_price': r.get('price', 0),
+    }
+
+
+def _norm_contract(r: dict) -> dict:
+    return {
+        'contract_number': r.get('purchid', ''),
+        'vendor_id': r.get('vendaccount', ''),
+        'status': r.get('purchstatus', ''),
+        'currency': r.get('currencycode', 'USD'),
+        'start_date': str(r.get('orderdate', '')),
+        'total_amount': r.get('totalamount', 0),
+    }
+
+
+def _norm_ap_aging(r: dict) -> dict:
+    return {
+        'journal_id': r.get('journalid', ''),
+        'voucher': r.get('voucher', ''),
+        'transaction_date': str(r.get('transdate', '')),
+        'debit_amount': r.get('debitamount', 0),
+        'credit_amount': r.get('creditamount', 0),
+        'account_id': r.get('mainaccountid', ''),
+        'journal_type': r.get('journaltype', ''),
+    }
+
+
+def _norm_payment_proposal(r: dict) -> dict:
+    return {
+        'journal_id': r.get('journalid', ''),
+        'voucher': r.get('voucher', ''),
+        'transaction_date': str(r.get('transdate', '')),
+        'debit_amount': r.get('debitamount', 0),
+        'credit_amount': r.get('creditamount', 0),
+        'account_id': r.get('mainaccountid', ''),
+        'journal_type': r.get('journaltype', ''),
+    }
+
+
+def _norm_budget(r: dict) -> dict:
+    return {
+        'cost_center': r.get('dimensionvalue', ''),
+        'cost_center_name': r.get('dimensionname', ''),
+        'dimension_type': r.get('dimensiontype', ''),
+        'is_active': r.get('isactive', True),
+    }
+
+
+def _norm_vendor_perf(r: dict) -> dict:
+    return {
+        'vendor_id': str(r.get('vendaccount', '')),
+        'vendor_name': r.get('vendname', ''),
+        'vendor_group': r.get('vendgroupid', ''),
+        'email': r.get('email', ''),
+        'phone': r.get('phone', ''),
+        'country': r.get('countryregionid', ''),
+        'currency': r.get('currency', 'USD'),
+        'payment_terms': r.get('paymtermid', ''),
+    }
+
+
+def _norm_inventory(r: dict) -> dict:
+    return {
+        'warehouse_id': r.get('inventlocationid', ''),
+        'warehouse_name': r.get('name', ''),
+        'warehouse_type': r.get('type_val', ''),
+        'is_active': r.get('isactive', True),
     }
 
 
@@ -225,7 +378,7 @@ class DynamicsAdapter(IDataSourceAdapter):
 
     def get_vendors(self, active_only: bool = True, limit: int = 200) -> list:
         if self._use_demo:
-            where = "onhold = 'No'" if active_only else ''
+            where = ''  # CSV data may not have onhold column
             return [_norm_vendor(r) for r in _query('vendors', where=where, limit=limit)]
         try:
             rows = self._get("VendVendorV2", {"$top": limit})
@@ -253,19 +406,25 @@ class DynamicsAdapter(IDataSourceAdapter):
 
     def get_cost_centers(self) -> list:
         if self._use_demo:
-            return self._pg().get_cost_centers()
-        return []
+            return [_norm_cost_center(r) for r in _query('cost_centers')]
+        logger.info("[DynamicsAdapter] get_cost_centers: OData not implemented, using PostgreSQL fallback")
+        return self._pg().get_cost_centers()
 
     def get_exchange_rates(self) -> list:
         if self._use_demo:
-            return self._pg().get_exchange_rates()
-        return []
+            return [_norm_exchange_rate(r) for r in _query('exchange_rates')]
+        logger.info("[DynamicsAdapter] get_exchange_rates: OData not implemented, using PostgreSQL fallback")
+        return self._pg().get_exchange_rates()
 
     # ── Procurement ────────────────────────────────────────────────────────────
 
     def get_purchase_requisitions(self, status: str = None, limit: int = 100) -> list:
         if self._use_demo:
-            return self._pg().get_purchase_requisitions(status=status, limit=limit)
+            where, params = '', ()
+            if status:
+                where = 'purchstatus = %s'
+                params = (status,)
+            return [_norm_pr(r) for r in _query('purchase_requisitions', where=where, params=params, limit=limit)]
         try:
             rows = self._get("PurchaseRequisitionHeaders", {"$top": limit})
             return [{"pr_number": r.get("PurchaseRequisitionNumber"),
@@ -276,12 +435,21 @@ class DynamicsAdapter(IDataSourceAdapter):
 
     def get_approved_suppliers(self, item_code: str = None, category: str = None) -> list:
         if self._use_demo:
-            return self._pg().get_approved_suppliers(item_code=item_code, category=category)
-        return []
+            where, params = '', ()
+            if item_code:
+                where = 'vendgroupid = %s'
+                params = (item_code,)
+            return [_norm_approved_supplier(r) for r in _query('approved_suppliers', where=where, params=params)]
+        logger.info("[DynamicsAdapter] get_approved_suppliers: OData not implemented, using PostgreSQL fallback")
+        return self._pg().get_approved_suppliers(item_code=item_code, category=category)
 
     def get_rfq_headers(self, status: str = None, limit: int = 50) -> list:
         if self._use_demo:
-            return self._pg().get_rfq_headers(status=status, limit=limit)
+            where, params = '', ()
+            if status:
+                where = 'purchstatus = %s'
+                params = (status,)
+            return [_norm_rfq(r) for r in _query('rfq_headers', where=where, params=params, limit=limit)]
         try:
             rows = self._get("PurchRFQCaseTable", {"$top": limit})
             return [{"rfq_number": r.get("RFQCaseNumber"), "status": r.get("Status")} for r in rows]
@@ -291,13 +459,23 @@ class DynamicsAdapter(IDataSourceAdapter):
 
     def get_vendor_quotes(self, item_name: str = None, limit: int = 50) -> list:
         if self._use_demo:
-            return self._pg().get_vendor_quotes(item_name=item_name, limit=limit)
-        return []
+            where, params = '', ()
+            if item_name:
+                where = 'itemid = %s'
+                params = (item_name,)
+            return [_norm_vendor_quote(r) for r in _query('vendor_quotes', where=where, params=params, limit=limit)]
+        logger.info("[DynamicsAdapter] get_vendor_quotes: OData not implemented, using PostgreSQL fallback")
+        return self._pg().get_vendor_quotes(item_name=item_name, limit=limit)
 
     def get_contracts(self, vendor_id: str = None, limit: int = 50) -> list:
         if self._use_demo:
-            return self._pg().get_contracts(vendor_id=vendor_id, limit=limit)
-        return []
+            where, params = '', ()
+            if vendor_id:
+                where = 'vendaccount = %s'
+                params = (vendor_id,)
+            return [_norm_contract(r) for r in _query('contracts', where=where, params=params, limit=limit)]
+        logger.info("[DynamicsAdapter] get_contracts: OData not implemented, using PostgreSQL fallback")
+        return self._pg().get_contracts(vendor_id=vendor_id, limit=limit)
 
     # ── Purchase Orders ────────────────────────────────────────────────────────
 
@@ -350,20 +528,27 @@ class DynamicsAdapter(IDataSourceAdapter):
 
     def get_ap_aging(self) -> list:
         if self._use_demo:
-            return self._pg().get_ap_aging()
-        return []
+            return [_norm_ap_aging(r) for r in _query('ap_aging')]
+        logger.info("[DynamicsAdapter] get_ap_aging: OData not implemented, using PostgreSQL fallback")
+        return self._pg().get_ap_aging()
 
     def get_payment_proposals(self, limit: int = 50) -> list:
         if self._use_demo:
-            return self._pg().get_payment_proposals(limit=limit)
-        return []
+            return [_norm_payment_proposal(r) for r in _query('payment_proposals', limit=limit)]
+        logger.info("[DynamicsAdapter] get_payment_proposals: OData not implemented, using PostgreSQL fallback")
+        return self._pg().get_payment_proposals(limit=limit)
 
     # ── Finance ───────────────────────────────────────────────────────────────
 
     def get_budget_vs_actuals(self, cost_center: str = None) -> list:
         if self._use_demo:
-            return self._pg().get_budget_vs_actuals(cost_center=cost_center)
-        return []
+            where, params = '', ()
+            if cost_center:
+                where = 'dimensionvalue = %s'
+                params = (cost_center,)
+            return [_norm_budget(r) for r in _query('budget', where=where, params=params)]
+        logger.info("[DynamicsAdapter] get_budget_vs_actuals: OData not implemented, using PostgreSQL fallback")
+        return self._pg().get_budget_vs_actuals(cost_center=cost_center)
 
     def get_spend_analytics(self, period: str = None, limit: int = 200) -> list:
         if self._use_demo:
@@ -372,14 +557,23 @@ class DynamicsAdapter(IDataSourceAdapter):
 
     def get_vendor_performance(self, vendor_id: str = None) -> list:
         if self._use_demo:
-            return self._pg().get_vendor_performance(vendor_id=vendor_id)
-        return []
+            where, params = '', ()
+            if vendor_id:
+                where = 'vendaccount = %s'
+                params = (vendor_id,)
+            return [_norm_vendor_perf(r) for r in _query('vendor_performance', where=where, params=params)]
+        logger.info("[DynamicsAdapter] get_vendor_performance: OData not implemented, using PostgreSQL fallback")
+        return self._pg().get_vendor_performance(vendor_id=vendor_id)
 
     # ── Inventory ─────────────────────────────────────────────────────────────
 
     def get_inventory_status(self, item_code: str = None) -> list:
         if self._use_demo:
-            return self._pg().get_inventory_status(item_code=item_code)
+            where, params = '', ()
+            if item_code:
+                where = 'inventlocationid = %s'
+                params = (item_code,)
+            return [_norm_inventory(r) for r in _query('inventory', where=where, params=params)]
         try:
             rows = self._get("InventOnHandEntries", {"$top": 200})
             return [{"item_code": r.get("ItemNumber"), "total_received": r.get("AvailableOrderedQuantity"),

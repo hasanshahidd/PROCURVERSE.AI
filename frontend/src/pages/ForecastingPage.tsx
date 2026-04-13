@@ -84,13 +84,19 @@ export default function ForecastingPage() {
     setIsGenerating(true);
     setResult(null);
 
+    // Sprint A fix (2026-04-11): was calling /spend/analyze with a
+    // payload the spend route never inspected, then silently fell through
+    // to MOCK_DATA on every run. ForecastingAgent (WF-19) was never
+    // actually invoked. Fix: hit /forecast/demand with the shape that
+    // ForecastingRequest expects (period_months + optional category) and
+    // map the agent's forecasts array back into ForecastRow.
+    const periodMonths: Record<Period, number> = { "3m": 3, "6m": 6, "12m": 12 };
     const payload = {
-      period,
-      request_type: "demand_forecast",
+      period_months: periodMonths[period],
     };
 
     try {
-      const res = await apiFetch("/api/agentic/spend/analyze", {
+      const res = await apiFetch("/api/agentic/forecast/demand", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -98,17 +104,49 @@ export default function ForecastingPage() {
 
       if (res.ok) {
         const data = await res.json();
-        setResult({
-          period,
-          generated_at: new Date().toISOString(),
-          rows: data.forecast_rows || MOCK_DATA[period],
-        });
+        // BaseAgent.execute returns {status, agent, decision, result: {...}}
+        // ForecastingAgent puts forecasts inside decision.context.forecasts
+        // OR (in some versions) inside result.forecasts. Probe both.
+        const forecasts =
+          (data?.result?.forecasts as unknown[] | undefined) ??
+          (data?.decision?.context?.forecasts as unknown[] | undefined) ??
+          (data?.forecasts as unknown[] | undefined) ??
+          [];
+
+        if (Array.isArray(forecasts) && forecasts.length > 0) {
+          const rows: ForecastRow[] = forecasts.map((raw) => {
+            const f = raw as Record<string, unknown>;
+            const historical = Number(f.rolling_3m_average ?? 0);
+            const forecasted = Number(f.predicted_next_period_spend ?? historical);
+            const budgetRemaining = Number(f.budget_remaining ?? 0);
+            const committed = Number(f.open_po_committed ?? 0);
+            // "budget" in the UI is the available budget pocket the category is
+            // competing against — agent exposes remaining + committed as components.
+            const budget = budgetRemaining + committed;
+            const overBudget = Boolean(f.over_budget_flag);
+            return {
+              category: String(f.category ?? "Uncategorised"),
+              historical_avg: historical,
+              forecasted: forecasted,
+              budget: budget,
+              status: overBudget ? "over" : "under",
+            };
+          });
+          setResult({
+            period,
+            generated_at: new Date().toISOString(),
+            rows,
+          });
+          return;
+        }
+        // Empty result set — fall through to mock so the page still renders.
+        throw new Error("ForecastingAgent returned zero categories");
       } else {
         throw new Error(`HTTP ${res.status}`);
       }
     } catch {
-      // Simulate a short loading delay then use mock data
-      await new Promise(resolve => setTimeout(resolve, 800));
+      // Fallback: show mock data so the page never renders a blank state.
+      await new Promise(resolve => setTimeout(resolve, 400));
       setResult({
         period,
         generated_at: new Date().toISOString(),

@@ -206,18 +206,18 @@ def create_custom_tables():
             print(f"   Skipping - {budget_count} budget records already exist")
         
         conn.commit()
-        print("\n✅ All custom tables created successfully!")
-        print("\n📊 Tables created:")
+        print("\nAll custom tables created successfully!")
+        print("\nTables created:")
         print("   1. approval_chains - Multi-level approval routing")
         print("   2. budget_tracking - Real-time budget monitoring")
         print("   3. agent_actions - Agent action audit trail")
         print("   4. agent_decisions - Agent learning history")
-        print("\n🔍 Indexes created for optimal performance")
-        print("🌱 Seeded with initial approval chains and budget data")
+        print("\nIndexes created for optimal performance")
+        print("Seeded with initial approval chains and budget data")
         
     except Exception as e:
         conn.rollback()
-        print(f"\n❌ Error creating tables: {str(e)}")
+        print(f"\nError creating tables: {str(e)}")
         raise
     
     finally:
@@ -238,15 +238,15 @@ def verify_tables():
             'agent_decisions'
         ]
         
-        print("\n🔍 Verifying tables...")
+        print("\nVerifying tables...")
         for table in tables:
             cur.execute(f"""
                 SELECT COUNT(*) FROM {table};
             """)
             count = cur.fetchone()[0]
-            print(f"   ✓ {table}: {count} records")
+            print(f"   {table}: {count} records")
         
-        print("\n✅ All tables verified!")
+        print("\nAll tables verified!")
         
     finally:
         cur.close()

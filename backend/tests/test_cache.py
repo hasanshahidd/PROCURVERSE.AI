@@ -29,14 +29,14 @@ def test_cache_initialization():
     
     cache = get_cache()
     
-    print(f"✓ Cache instance created")
-    print(f"✓ Cache enabled: {cache.enabled}")
+    print(f"Cache instance created")
+    print(f"Cache enabled: {cache.enabled}")
     
     if cache.enabled:
-        print(f"✓ Cache client: {type(cache.client).__name__}")
+        print(f"Cache client: {type(cache.client).__name__}")
     
     assert cache is not None, "Cache service should be initialized"
-    print("\n✅ TEST 1 PASSED: Cache initialized successfully\n")
+    print("\nTEST 1 PASSED: Cache initialized successfully\n")
     return True
 
 
@@ -57,20 +57,20 @@ def test_basic_cache_operations():
     test_value = "test_value_123"
     success = cache.set(test_key, test_value, 60)
     assert success, "Cache set should succeed"
-    print(f"✓ SET operation: {test_key} = {test_value}")
+    print(f"SET operation: {test_key} = {test_value}")
     
     # Test GET
     retrieved = cache.get(test_key)
     assert retrieved == test_value, f"Expected '{test_value}', got '{retrieved}'"
-    print(f"✓ GET operation: Retrieved '{retrieved}'")
+    print(f"GET operation: Retrieved '{retrieved}'")
     
     # Test DELETE
     cache.delete(test_key)
     deleted_value = cache.get(test_key)
     assert deleted_value is None, "Value should be None after delete"
-    print(f"✓ DELETE operation: Key removed")
+    print(f"DELETE operation: Key removed")
     
-    print("\n✅ TEST 2 PASSED: Basic operations working\n")
+    print("\nTEST 2 PASSED: Basic operations working\n")
     return True
 
 
@@ -90,12 +90,12 @@ def test_ttl_expiration():
     test_key = "test:ttl"
     test_value = "expires_soon"
     cache.set(test_key, test_value, 2)
-    print(f"✓ SET with TTL=2s: {test_key}")
+    print(f"SET with TTL=2s: {test_key}")
     
     # Immediate retrieval should work
     value = cache.get(test_key)
     assert value == test_value, "Value should exist immediately after set"
-    print(f"✓ Immediate GET: '{value}' (still cached)")
+    print(f"Immediate GET: '{value}' (still cached)")
     
     # Wait for expiration
     print("  Waiting 3 seconds for TTL expiration...")
@@ -104,9 +104,9 @@ def test_ttl_expiration():
     # Should be expired
     expired_value = cache.get(test_key)
     assert expired_value is None, "Value should be None after TTL expiration"
-    print(f"✓ After 3s: Value expired (None)")
+    print(f"After 3s: Value expired (None)")
     
-    print("\n✅ TEST 3 PASSED: TTL expiration working\n")
+    print("\nTEST 3 PASSED: TTL expiration working\n")
     return True
 
 
@@ -140,25 +140,25 @@ def test_cache_decorator():
     
     # First call - cache miss
     result1 = expensive_function(5, 3)
-    print(f"✓ First call: {result1} (cache miss, function executed)")
+    print(f"First call: {result1} (cache miss, function executed)")
     assert call_count == 1, "Function should be called once"
     assert result1["result"] == 8, "Result should be correct"
     
     # Second call - cache hit
     result2 = expensive_function(5, 3)
-    print(f"✓ Second call: {result2} (cache hit, function NOT executed)")
+    print(f"Second call: {result2} (cache hit, function NOT executed)")
     assert call_count == 1, "Function should NOT be called again (cached)"
     assert result2["result"] == 8, "Cached result should match"
     
     # Different arguments - cache miss
     result3 = expensive_function(10, 20)
-    print(f"✓ Different args: {result3} (cache miss, function executed)")
+    print(f"Different args: {result3} (cache miss, function executed)")
     assert call_count == 2, "Function should be called with new arguments"
     assert result3["result"] == 30, "Result should be correct for new args"
     
     # Check cache stats
     stats = cache.get_stats()
-    print(f"\n✓ Cache statistics:")
+    print(f"\nCache statistics:")
     print(f"  - Hits: {stats['hits']}")
     print(f"  - Misses: {stats['misses']}")
     print(f"  - Hit rate: {stats['hit_rate']}%")
@@ -166,7 +166,7 @@ def test_cache_decorator():
     assert stats['hits'] >= 1, "Should have at least 1 cache hit"
     assert stats['misses'] >= 2, "Should have at least 2 cache misses"
     
-    print("\n✅ TEST 4 PASSED: Decorator caching working\n")
+    print("\nTEST 4 PASSED: Decorator caching working\n")
     return True
 
 
@@ -182,24 +182,24 @@ def test_cache_key_generation():
     key3 = cache_key("vendors", limit=20, category="Electronics")
     key4 = cache_key("vendors", category="Electronics", limit=10)  # Different order
     
-    print(f"✓ Key 1: {key1}")
-    print(f"✓ Key 2: {key2}")
-    print(f"✓ Key 3: {key3}")
-    print(f"✓ Key 4: {key4}")
+    print(f"Key 1: {key1}")
+    print(f"Key 2: {key2}")
+    print(f"Key 3: {key3}")
+    print(f"Key 4: {key4}")
     
     # Same args should produce same key
     assert key1 == key2, "Same arguments should produce same key"
-    print(f"✓ Same args → same key: {key1 == key2}")
+    print(f"Same args → same key: {key1 == key2}")
     
     # Different args should produce different key
     assert key1 != key3, "Different arguments should produce different key"
-    print(f"✓ Different args → different key: {key1 != key3}")
+    print(f"Different args → different key: {key1 != key3}")
     
     # Order of kwargs shouldn't matter
     assert key1 == key4, "Argument order should NOT affect key"
-    print(f"✓ Arg order independent: {key1 == key4}")
+    print(f"Arg order independent: {key1 == key4}")
     
-    print("\n✅ TEST 5 PASSED: Cache key generation working\n")
+    print("\nTEST 5 PASSED: Cache key generation working\n")
     return True
 
 
@@ -217,7 +217,7 @@ def test_cache_statistics():
     
     # Reset stats
     cache.reset_stats()
-    print("✓ Statistics reset")
+    print("Statistics reset")
     
     # Generate some cache activity
     cache.set("stat_test_1", "value1", 60)
@@ -235,7 +235,7 @@ def test_cache_statistics():
     # Get stats
     stats = cache.get_stats()
     
-    print(f"\n✓ Cache Statistics:")
+    print(f"\nCache Statistics:")
     print(f"  - Enabled: {stats['enabled']}")
     print(f"  - Total Hits: {stats['hits']}")
     print(f"  - Total Misses: {stats['misses']}")
@@ -246,7 +246,7 @@ def test_cache_statistics():
     assert stats['misses'] == 2, f"Expected 2 misses, got {stats['misses']}"
     assert stats['hit_rate'] == 60.0, f"Expected 60% hit rate, got {stats['hit_rate']}%"
     
-    print("\n✅ TEST 6 PASSED: Statistics tracking accurate\n")
+    print("\nTEST 6 PASSED: Statistics tracking accurate\n")
     return True
 
 
@@ -268,40 +268,40 @@ def test_pattern_invalidation():
     cache.set("products:search1", "data3", 60)
     cache.set("products:search2", "data4", 60)
     
-    print("✓ Set 4 cache entries (2 vendors, 2 products)")
+    print("Set 4 cache entries (2 vendors, 2 products)")
     
     # Verify they exist
     assert cache.get("vendors:category1") is not None
     assert cache.get("products:search1") is not None
-    print("✓ All entries exist")
+    print("All entries exist")
     
     # Invalidate vendors pattern
     deleted = invalidate_cache("vendors:*")
-    print(f"✓ Invalidated 'vendors:*' pattern ({deleted} keys)")
+    print(f"Invalidated 'vendors:*' pattern ({deleted} keys)")
     
     # Vendors should be gone
     assert cache.get("vendors:category1") is None, "Vendor cache should be cleared"
     assert cache.get("vendors:category2") is None, "Vendor cache should be cleared"
-    print("✓ Vendor caches cleared")
+    print("Vendor caches cleared")
     
     # Products should still exist
     assert cache.get("products:search1") is not None, "Product cache should remain"
     assert cache.get("products:search2") is not None, "Product cache should remain"
-    print("✓ Product caches still exist")
+    print("Product caches still exist")
     
     # Clean up
     invalidate_cache("products:*")
     
-    print("\n✅ TEST 7 PASSED: Pattern invalidation working\n")
+    print("\nTEST 7 PASSED: Pattern invalidation working\n")
     return True
 
 
 def main():
     """Run all cache tests"""
-    print("\n" + "🧪"*30)
+    print("\n" + ""*30)
     print("  CACHE SYSTEM TESTING - FIX #4")
     print("  Backend: Redis/Fakeredis Caching Layer")
-    print("🧪"*30 + "\n")
+    print(""*30 + "\n")
     
     tests = [
         ("Cache Initialization", test_cache_initialization),
@@ -319,7 +319,7 @@ def main():
             passed = test_func()
             results.append((name, passed))
         except Exception as e:
-            print(f"\n❌ TEST FAILED: {name}")
+            print(f"\nTEST FAILED: {name}")
             print(f"   Error: {e}")
             import traceback
             traceback.print_exc()
@@ -334,7 +334,7 @@ def main():
     total_count = len(results)
     
     for name, passed in results:
-        status = "✅ PASSED" if passed else "❌ FAILED"
+        status = "PASSED" if passed else "FAILED"
         print(f"{status}: {name}")
     
     print(f"\n{'='*60}")
@@ -342,10 +342,10 @@ def main():
     print(f"{'='*60}\n")
     
     if passed_count == total_count:
-        print("🎉 ALL CACHE TESTS PASSED!")
+        print("ALL CACHE TESTS PASSED!")
         return 0
     else:
-        print(f"⚠️  {total_count - passed_count} test(s) failed")
+        print(f"️  {total_count - passed_count} test(s) failed")
         return 1
 
 

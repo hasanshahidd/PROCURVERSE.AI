@@ -32,6 +32,7 @@ class AgentEventType(str, Enum):
     LEARNING_COMPLETE = "learning_complete"  # Learning complete
     COMPLETE = "complete"           # Full execution done
     ERROR = "error"                 # Error occurred
+    SESSION_CREATED = "session_created"  # Layer 1: execution session created for P2P_FULL intent
 
 
 class AgentEventStream:
@@ -77,10 +78,42 @@ class AgentEventStream:
             "data": data
         }
         
-        logger.info(f"[EVENT STREAM] 📡 Emitting: {event_type.value}")
-        
+        logger.info(f"[EVENT STREAM] Emitting: {event_type.value}")
+
         await self.events.put(event)
+        # Yield control briefly so the SSE generator can flush events to the client
+        await asyncio.sleep(0)
         await emit_executive_from_agent_event(self.request_id, event)
+
+        # Also inject business summary into SSE stream for ChatPage
+        try:
+            result_data = _extract_result_data(data)
+            agent_name = str(data.get("agent_name", data.get("agent", "")))
+            phase = event_type.value
+            summary = _build_dynamic_business_summary(agent_name, phase, result_data)
+            if summary and summary.strip() and "No detailed summary" not in summary:
+                business_event = {
+                    "type": "business_summary",
+                    "timestamp": datetime.now().isoformat(),
+                    "data": {
+                        "summary": summary,
+                        "agent_name": agent_name,
+                        "phase": phase,
+                        "status_badge": _business_status_badge(
+                            data.get("status", "active"),
+                            data.get("confidence"),
+                            summary
+                        ),
+                        "risk_level": _infer_risk_level(
+                            data.get("risk_level"),
+                            data.get("status"),
+                            "Processing",
+                        ),
+                    }
+                }
+                await self.events.put(business_event)
+        except Exception:
+            pass  # Non-blocking — don't break SSE stream for business summary
         
     async def emit_error(self, error_message: str, error_details: Dict[str, Any] = None) -> None:
         """Emit an error event"""
@@ -103,12 +136,12 @@ class AgentEventStream:
     async def generate_sse(self) -> AsyncGenerator[str, None]:
         """
         Generate Server-Sent Events format.
-        
+
         Yields:
             SSE formatted strings: "data: {...}\n\n"
         """
-        logger.info("[EVENT STREAM] 🚀 Starting SSE generation")
-        
+        logger.info(f"[EVENT STREAM] Starting SSE generation (is_complete={self.is_complete}, queue_size={self.events.qsize()})")
+
         while not self.is_complete or not self.events.empty():
             try:
                 # Wait for next event with timeout
@@ -128,16 +161,16 @@ class AgentEventStream:
                 
                 # Check if this was completion event
                 if event["type"] in [AgentEventType.COMPLETE.value, AgentEventType.ERROR.value]:
-                    logger.info(f"[EVENT STREAM] ✅ Stream complete: {event['type']}")
+                    logger.info(f"[EVENT STREAM] Stream complete: {event['type']}")
                     break
                     
             except asyncio.TimeoutError:
                 # Send keepalive
                 yield ": keepalive\n\n"
-                logger.debug("[EVENT STREAM] 💓 Keepalive sent")
+                logger.debug("[EVENT STREAM] Keepalive sent")
                 
             except Exception as e:
-                logger.error(f"[EVENT STREAM] ❌ Error: {e}")
+                logger.error(f"[EVENT STREAM] Error: {e}")
                 error_event = {
                     "type": AgentEventType.ERROR.value,
                     "timestamp": datetime.now().isoformat(),
@@ -146,7 +179,7 @@ class AgentEventStream:
                 yield f"data: {json.dumps(error_event, default=self._json_default)}\n\n"
                 break
         
-        logger.info("[EVENT STREAM] 🏁 SSE generation complete")
+        logger.info("[EVENT STREAM] SSE generation complete")
 
 
 # Global registry for active streams (keyed by request ID)
@@ -341,16 +374,30 @@ def _extract_result_data(raw_data: Dict[str, Any]) -> Dict[str, Any]:
         primary_result_val.get("result") if isinstance(primary_result_val, dict) else None,
     ]
 
+    # Also pull from decision context (orchestrator embeds routing info here)
+    decision_val = raw_data.get("decision")
+    if isinstance(decision_val, dict):
+        candidates.append(decision_val)
+
     merged: Dict[str, Any] = {}
     for item in candidates:
         if isinstance(item, dict):
             merged.update(item)
+
+    # Ensure key top-level fields aren't lost during nested merging
+    for key in ("agent", "agent_name", "routed_agent", "routed_agent_name",
+                "detected_intent", "intent", "query_type", "confidence",
+                "status", "message"):
+        if key not in merged and raw_data.get(key) is not None:
+            merged[key] = raw_data[key]
+
     return merged
 
 
 def _build_dynamic_business_summary(agent_name: str, phase: str, result_data: Dict[str, Any]) -> str:
     if not result_data:
-        return "Procurement check completed. No detailed summary is available for this step."
+        # Return empty so the filter at line 91 skips this event
+        return ""
 
     agent = (agent_name or "").lower()
     phase_upper = (phase or "").upper()
@@ -365,7 +412,44 @@ def _build_dynamic_business_summary(agent_name: str, phase: str, result_data: Di
         )
         if detected_intent and routed_agent:
             return f"A {detected_intent} request has been received and assigned to {routed_agent} for processing."
-        return "Your procurement request has been received and is being processed."
+        # Provide a more specific fallback when we at least know the query type
+        if detected_intent:
+            return f"A {detected_intent.replace('_', ' ').title()} request has been received and is being processed by the AI system."
+        return "Your procurement request has been received and is being processed by the AI system."
+
+    if "compliancecheck" in agent or "compliance_check" in agent:
+        status = str(_coalesce(result_data.get("status"), "")).lower()
+        violations = result_data.get("violations") or []
+        warnings = result_data.get("warnings") or []
+        score = result_data.get("score")
+        policy = _coalesce(result_data.get("policy_name"), result_data.get("policy"))
+
+        if status in {"passed", "approved", "success"}:
+            msg = "Compliance check passed."
+            if policy:
+                msg = f"Compliance check passed against {policy}."
+            if isinstance(score, (int, float)):
+                msg += f" Score: {score}%."
+            return msg
+        if status in {"failed", "rejected", "violation"}:
+            msg = "Compliance violation detected."
+            if isinstance(violations, list) and violations:
+                msg += f" {len(violations)} violation(s) found."
+            return msg + " Manual review required."
+        if isinstance(warnings, list) and warnings:
+            return f"Compliance check completed with {len(warnings)} warning(s). Review recommended."
+        return result_data.get("message", "Compliance check in progress.")
+
+    if "priceanalysis" in agent or "price_analysis" in agent:
+        avg_price = _to_currency(result_data.get("average_price"))
+        recommended = _to_currency(result_data.get("recommended_price"))
+        savings = _to_currency(result_data.get("potential_savings"))
+        if avg_price and recommended:
+            msg = f"Price analysis complete. Market average: {avg_price}, recommended: {recommended}."
+            if savings:
+                msg += f" Potential savings: {savings}."
+            return msg
+        return result_data.get("message", "Price analysis completed.")
 
     if "budgetverification" in agent:
         department = _coalesce(result_data.get("department_name"), result_data.get("department"))
@@ -437,7 +521,7 @@ def _build_dynamic_business_summary(agent_name: str, phase: str, result_data: Di
             pieces.append(f"Selection was driven by {reason}.")
         if runner_up:
             pieces.append(f"Runner-up was {runner_up}.")
-        return " ".join(pieces) if pieces else "Procurement check completed. No detailed summary is available for this step."
+        return " ".join(pieces) if pieces else ""
 
     if "riskassessment" in agent:
         risk_level = str(_coalesce(result_data.get("risk_level"), "medium")).lower()
@@ -500,6 +584,163 @@ def _build_dynamic_business_summary(agent_name: str, phase: str, result_data: Di
             return f"Contract with {vendor} is active and valid until {expiry}. No renewal action is required at this time."
         return f"Contract with {vendor} is active. No renewal action is required at this time."
 
+    # ── New P2P Agents ──────────────────────────────────────────────────────
+    if "rfqagent" in agent or "rfq_management" in agent:
+        rfq_num = _coalesce(result_data.get("rfq_number"))
+        title = _coalesce(result_data.get("title"), result_data.get("message"))
+        if rfq_num:
+            return f"RFQ {rfq_num} has been created and sent to vendors for quotation. {title or ''}"
+        return result_data.get("message", "RFQ process initiated.")
+
+    if "poamendment" in agent or "po_amendment" in agent:
+        amd_num = _coalesce(result_data.get("amendment_number"))
+        po_num = _coalesce(result_data.get("po_number"))
+        amd_type = _coalesce(result_data.get("amendment_type"), "modification")
+        needs_approval = result_data.get("requires_approval", False)
+        if amd_num:
+            msg = f"Amendment {amd_num} created for {po_num or 'purchase order'} ({amd_type.replace('_', ' ')})."
+            if needs_approval:
+                msg += " Re-approval required due to significant impact."
+            return msg
+        return result_data.get("message", "PO amendment initiated.")
+
+    if "returnagent" in agent or "return_processing" in agent:
+        rtv_num = _coalesce(result_data.get("rtv_number"))
+        qty = result_data.get("items_returned", result_data.get("total_return_qty"))
+        credit = result_data.get("credit_expected")
+        if rtv_num:
+            msg = f"Return {rtv_num} initiated."
+            if qty:
+                msg += f" {qty} items being returned."
+            if credit:
+                msg += f" Expected credit: ${float(credit):,.2f}."
+            return msg
+        return result_data.get("message", "Return to vendor initiated.")
+
+    if "qualityinspection" in agent or "quality_inspection" in agent:
+        score = result_data.get("score", result_data.get("total_score"))
+        pass_fail = result_data.get("pass_fail", "")
+        grn = result_data.get("grn_number", "")
+        hold = result_data.get("hold_goods", False)
+        if score is not None:
+            msg = f"Quality inspection for {grn or 'goods'}: Score {score}% — {str(pass_fail).upper()}."
+            if hold:
+                msg += " Goods placed ON HOLD pending review."
+            return msg
+        return result_data.get("message", "Quality inspection completed.")
+
+    if "reconciliation" in agent:
+        matched = result_data.get("matched", 0)
+        exceptions = result_data.get("exceptions", 0)
+        processed = result_data.get("processed", 0)
+        if processed:
+            return f"Reconciliation complete: {processed} bank entries processed, {matched} matched, {exceptions} exceptions."
+        return result_data.get("message", "Payment reconciliation completed.")
+
+    if "vendoronboarding" in agent or "vendor_onboarding" in agent:
+        vendor = _coalesce(result_data.get("vendor_name"), result_data.get("supplier_name"))
+        status = result_data.get("onboarding_status", result_data.get("status"))
+        if vendor:
+            return f"Vendor onboarding for {vendor}: {status or 'in progress'}."
+        return result_data.get("message", "Vendor onboarding process initiated.")
+
+    if "deliverytracking" in agent or "delivery_tracking" in agent:
+        po = _coalesce(result_data.get("po_number"))
+        status = result_data.get("delivery_status", result_data.get("status"))
+        eta = result_data.get("estimated_delivery", result_data.get("eta"))
+        if po:
+            msg = f"Delivery tracking for {po}: {status or 'in transit'}."
+            if eta:
+                msg += f" ETA: {eta}."
+            return msg
+        return result_data.get("message", "Delivery tracking check completed.")
+
+    if "discrepancyresolution" in agent or "exception_resolution" in agent:
+        resolved = result_data.get("auto_resolved_count", result_data.get("resolved"))
+        manual = result_data.get("manual_review_count", result_data.get("pending_review"))
+        if resolved is not None or manual is not None:
+            return f"Exception resolution: {resolved or 0} auto-resolved, {manual or 0} sent for manual review."
+        return result_data.get("message", "Exception resolution completed.")
+
+    if "paymentreadiness" in agent or "payment_readiness" in agent:
+        gates_passed = result_data.get("gates_passed", result_data.get("conditions_passed"))
+        ready = result_data.get("payment_ready", result_data.get("authorized"))
+        if ready:
+            return f"Payment readiness check: ALL gates passed. Payment authorized."
+        if gates_passed is not None:
+            return f"Payment readiness: {gates_passed}/7 gates passed. Review required."
+        return result_data.get("message", "Payment readiness check completed.")
+
+    # ── Generic / fallback for any agent with a message field ──────────────
+    if result_data.get("message"):
+        return str(result_data["message"])[:300]
+
+    # ── Phase-aware generic summaries (always generate useful text) ────────
+    agent_label = agent_name or "AI Agent"
+    if agent_label.endswith("Agent"):
+        # Convert "BudgetVerificationAgent" → "Budget Verification Agent"
+        import re
+        agent_label = re.sub(r'([a-z])([A-Z])', r'\1 \2', agent_label)
+
+    if phase_upper == "RECEIVED":
+        request_text = _coalesce(result_data.get("request"), "")
+        if request_text:
+            return f"Processing procurement request: {str(request_text)[:120]}"
+        return "A new procurement request has been received and is being validated."
+
+    if phase_upper == "CLASSIFYING":
+        intent = _coalesce(result_data.get("intent"), result_data.get("query_type"), result_data.get("detected_intent"))
+        if intent:
+            return f"Request classified as: {str(intent).replace('_', ' ').title()}. Selecting optimal agent."
+        return "Analyzing request intent and determining the appropriate agent."
+
+    if phase_upper == "ROUTING":
+        routed = _coalesce(result_data.get("agent"), result_data.get("routed_agent_name"), result_data.get("routed_agent"))
+        confidence = result_data.get("confidence")
+        reason = result_data.get("reasoning") or result_data.get("reason") or ""
+        if routed:
+            conf_str = f" ({confidence}% confidence)" if confidence else ""
+            return f"Request routed to {routed}{conf_str}. {reason}".strip()
+        return "Routing request to the most appropriate specialized agent."
+
+    if phase_upper == "AGENT_SELECTED":
+        selected = _coalesce(result_data.get("agent"), result_data.get("agent_name"))
+        if selected:
+            return f"{selected} has been selected and is beginning execution."
+        return "Specialized agent selected for this request."
+
+    if phase_upper in ("OBSERVING", "OBSERVATION_COMPLETE"):
+        sources = result_data.get("sources") or result_data.get("data_sources") or []
+        if isinstance(sources, list) and sources:
+            return f"{agent_label} is gathering data from {', '.join(str(s) for s in sources[:3])}."
+        return f"{agent_label} is gathering context from enterprise databases and ERP systems."
+
+    if phase_upper in ("DECIDING", "DECISION_MADE"):
+        action = result_data.get("action")
+        model = result_data.get("model")
+        if action:
+            action_str = action if isinstance(action, str) else (action.get("primary", "") if isinstance(action, dict) else str(action))
+            action_str = action_str.replace("_", " ").title() if action_str else "analysis"
+            return f"{agent_label} decision: {action_str}.{f' Model: {model}.' if model else ''}"
+        if model:
+            return f"{agent_label} is analyzing the data using {model}."
+        return f"{agent_label} is forming a decision based on the collected data."
+
+    if phase_upper in ("ACTING", "ACTION_COMPLETE"):
+        tools = result_data.get("tools") or []
+        if isinstance(tools, list) and tools:
+            return f"{agent_label} executing: {', '.join(str(t) for t in tools[:3])}."
+        timing = result_data.get("execution_time_ms")
+        if timing:
+            return f"{agent_label} completed tool execution in {timing}ms."
+        return f"{agent_label} is executing the required actions."
+
+    if phase_upper in ("LEARNING", "LEARNING_COMPLETE"):
+        recorded = result_data.get("recorded")
+        if recorded:
+            return f"{agent_label} has recorded the decision and outcome to the audit trail."
+        return f"{agent_label} is recording the decision for compliance and audit purposes."
+
     if phase_upper == "COMPLETE":
         escalated_to = _coalesce(result_data.get("escalated_to"), result_data.get("reviewer"))
         escalation_reason = _coalesce(result_data.get("escalation_reason"), result_data.get("failure_reason"), result_data.get("reason"))
@@ -521,7 +762,8 @@ def _build_dynamic_business_summary(agent_name: str, phase: str, result_data: Di
             sentence += f" Final decision: {decision}."
         return sentence
 
-    return "Procurement check completed. No detailed summary is available for this step."
+    # Return empty so the filter skips this event rather than showing useless text
+    return ""
 
 
 def _financial_note(data: Dict[str, Any]) -> str | None:
@@ -570,6 +812,24 @@ def _derive_business_payload(technical_payload: Dict[str, Any], raw_data: Dict[s
     agent_name = str(technical_payload.get("agent_name", ""))
     phase = str(technical_payload.get("phase", ""))
     summary = _build_dynamic_business_summary(agent_name, phase, result_data)
+    # If no meaningful summary, generate a phase-based description
+    if not summary or not summary.strip():
+        phase_labels = {
+            "received": f"Request received by {agent_name or 'system'}.",
+            "classifying": f"Analyzing request intent and routing.",
+            "routing": f"Routing to specialized agent.",
+            "agent_selected": f"{agent_name} selected for processing.",
+            "observing": f"{agent_name} gathering data from databases and ERP.",
+            "observation_complete": f"{agent_name} finished data collection.",
+            "deciding": f"{agent_name} analyzing data with AI model.",
+            "decision_made": f"{agent_name} made a decision.",
+            "acting": f"{agent_name} executing actions.",
+            "action_complete": f"{agent_name} completed execution.",
+            "learning": f"{agent_name} recording audit trail.",
+            "learning_complete": f"{agent_name} saved execution record.",
+            "complete": f"Processing complete.",
+        }
+        summary = phase_labels.get(phase, f"{agent_name} processing ({phase}).")
     confidence_score = technical_payload.get("confidence_score")
     status = technical_payload.get("status", "active")
     badge = _business_status_badge(status, confidence_score, summary)
@@ -755,7 +1015,7 @@ def cleanup_stream(request_id: str) -> None:
     """
     if request_id in _active_streams:
         del _active_streams[request_id]
-        logger.info(f"[EVENT STREAM] 🗑️  Cleaned up stream: {request_id}")
+        logger.info(f"[EVENT STREAM] ️  Cleaned up stream: {request_id}")
 
 
 def get_active_stream_count() -> int:

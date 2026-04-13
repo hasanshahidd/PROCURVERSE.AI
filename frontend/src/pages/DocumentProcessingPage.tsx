@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from "react";
-import { FileSearch, FileUp, ChevronDown, ChevronRight, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
+import { FileSearch, FileUp, ChevronDown, ChevronRight, CheckCircle, AlertCircle, Loader2, Mail, Inbox } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -199,6 +199,23 @@ export default function DocumentProcessingPage() {
   const [processed, setProcessed] = useState(false);
   const [isDemo, setIsDemo] = useState(false);
   const [rawExpanded, setRawExpanded] = useState(false);
+  const [emailScanning, setEmailScanning] = useState(false);
+  const [emailScanResult, setEmailScanResult] = useState<any>(null);
+
+  const scanEmailInbox = async () => {
+    setEmailScanning(true);
+    setEmailScanResult(null);
+    try {
+      const res = await apiFetch("/api/ocr/email-scan", { method: "POST" });
+      if (!res.ok) throw new Error(`Scan failed: ${res.status}`);
+      const data = await res.json();
+      setEmailScanResult(data);
+    } catch (err: any) {
+      setEmailScanResult({ success: false, error: err.message || "Scan failed" });
+    } finally {
+      setEmailScanning(false);
+    }
+  };
 
   const processDocument = async (fileToProcess?: File, overrideType?: DocType, demoResult?: ExtractionResult) => {
     setLoading(true);
@@ -221,25 +238,34 @@ export default function DocumentProcessingPage() {
     }
 
     try {
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve((reader.result as string).split(",")[1] || "");
-        reader.onerror = reject;
-        reader.readAsDataURL(f);
-      });
+      // Use real multipart upload to OCR endpoint
+      const formData = new FormData();
+      formData.append("file", f);
+      formData.append("doc_type", overrideType || docType || "auto");
 
-      const res = await apiFetch("/api/agentic/document/process", {
+      const res = await apiFetch("/api/ocr/process", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          document_type: overrideType || docType,
-          file_content: base64,
-          filename: f.name,
-        }),
+        body: formData,
+        // Don't set Content-Type — browser sets multipart boundary automatically
       });
-      if (!res.ok) throw new Error("Non-OK");
+      if (!res.ok) throw new Error(`OCR failed: ${res.status}`);
       const data = await res.json();
-      setResult(data);
+
+      // Map OCR response to ExtractionResult shape
+      const mapped: ExtractionResult = {
+        document_type: data.doc_type_detected || "unknown",
+        confidence: data.confidence || 0,
+        fields: (data.fields || []).map((f: any) => ({
+          name: f.name || "",
+          value: f.value || "",
+          confidence: f.confidence || 0,
+          status: f.status === "extracted"
+            ? (f.confidence >= 0.85 ? "verified" : "review")
+            : "failed",
+        })),
+        raw_text: data.raw_text,
+      };
+      setResult(mapped);
       setIsDemo(false);
     } catch {
       setResult(DEMO_INVOICE);
@@ -329,6 +355,63 @@ export default function DocumentProcessingPage() {
                   <span className="text-sm text-gray-700 group-hover:text-purple-700">{doc.label}</span>
                 </button>
               ))}
+            </CardContent>
+          </Card>
+
+          {/* Email Inbox Scan */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Mail className="h-4 w-4" />
+                Email Inbox Scanner
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-xs text-muted-foreground">
+                Scan your email inbox for incoming invoices and procurement documents.
+                Attachments are auto-processed via OCR.
+              </p>
+              <Button
+                onClick={scanEmailInbox}
+                disabled={emailScanning}
+                variant="outline"
+                className="w-full"
+              >
+                {emailScanning ? (
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Scanning Inbox...</>
+                ) : (
+                  <><Inbox className="h-4 w-4 mr-2" />Scan Email Inbox</>
+                )}
+              </Button>
+              {emailScanResult && (
+                <div className="rounded-md border p-3 text-xs space-y-1">
+                  {emailScanResult.success ? (
+                    <>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Mode</span>
+                        <Badge variant={emailScanResult.mode === "live" ? "default" : "secondary"} className="text-[10px]">
+                          {emailScanResult.mode}
+                        </Badge>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Emails scanned</span>
+                        <span className="font-semibold">{emailScanResult.emails_scanned}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Invoices found</span>
+                        <span className="font-semibold text-green-600">{emailScanResult.invoices_found}</span>
+                      </div>
+                      {emailScanResult.mode === "demo" && (
+                        <p className="text-muted-foreground mt-2 italic">
+                          Configure IMAP_USER and IMAP_PASSWORD in .env for live email scanning.
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-red-600">{emailScanResult.error || "Scan failed"}</p>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

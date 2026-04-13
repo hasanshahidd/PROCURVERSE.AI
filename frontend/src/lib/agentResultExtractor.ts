@@ -26,7 +26,7 @@
  */
 
 export interface NormalisedResult {
-  kind: "single" | "multi" | "pr_workflow" | "odoo" | "pending";
+  kind: "single" | "multi" | "pr_workflow" | "p2p_full" | "odoo" | "pending";
   agent: string;
   status: string;
   payload: Record<string, any>;
@@ -73,9 +73,34 @@ export function extractAgentResult(raw: any, fallbackAgent?: string): Normalised
     return extractMultiIntent(envelope, raw, fallbackAgent);
   }
 
-  // Detect PR workflow
-  if (get(envelope, "workflow_type") === "pr_creation") {
-    return extractPrWorkflow(envelope, raw, fallbackAgent);
+  // Detect P2P_FULL workflow (must come before PR workflow check)
+  if (
+    get(envelope, "workflow_type") === "P2P_FULL" ||
+    get(raw, "workflow_type") === "P2P_FULL" ||
+    get(raw, "query_type") === "P2P_FULL" ||
+    get(envelope, "query_type") === "P2P_FULL" ||
+    (envelopeInner && get(envelopeInner, "workflow_type") === "P2P_FULL")
+  ) {
+    return extractP2PFull(envelope, raw, fallbackAgent);
+  }
+
+  // Detect PR workflow — check multiple nesting levels since emit_complete
+  // wraps the payload and the backend may or may not propagate workflow_type to the top level
+  if (
+    get(envelope, "workflow_type") === "pr_creation" ||
+    get(raw, "workflow_type") === "pr_creation" ||
+    get(envelope, "awaiting_vendor_confirmation") === true ||
+    get(raw, "awaiting_vendor_confirmation") === true ||
+    (envelopeInner && typeof envelopeInner === "object" &&
+      get(envelopeInner, "workflow_type") === "pr_creation")
+  ) {
+    // The payload might be at envelope level, or nested inside envelope.result
+    const prPayload =
+      get(envelope, "workflow_type") === "pr_creation" ? envelope :
+      get(raw, "workflow_type") === "pr_creation" ? raw :
+      (envelopeInner && get(envelopeInner, "workflow_type") === "pr_creation") ? envelopeInner :
+      envelope;
+    return extractPrWorkflow(prPayload, raw, fallbackAgent);
   }
 
   // Detect Odoo data
@@ -137,6 +162,11 @@ function extractSingleIntent(envelope: any, raw: any, fallback?: string): Normal
   // If the innerResult also has a "primary_result" layer (orchestrator output)
   const primary = get(innerResult, "primary_result") ?? innerResult;
   const payload = get(primary, "result") ?? primary;
+
+  // Deep-check: if the drilled payload is actually a P2P_FULL workflow, hand off.
+  if (payload && typeof payload === "object" && get(payload, "workflow_type") === "P2P_FULL") {
+    return extractP2PFull(payload, raw, get(primary, "agent") || get(envelope, "agent") || fallback);
+  }
 
   // Deep-check: if the drilled payload is actually a PR creation workflow,
   // hand off to the pr_workflow extractor so kind is set correctly.
@@ -237,16 +267,65 @@ function extractMultiIntent(envelope: any, raw: any, fallback?: string): Normali
   };
 }
 
+function extractP2PFull(envelope: any, raw: any, fallback?: string): NormalisedResult {
+  // P2P_FULL can arrive at different nesting levels
+  const inner = get(envelope, "result") ?? envelope;
+  const payload = (inner && typeof inner === "object" && get(inner, "workflow_type") === "P2P_FULL")
+    ? inner
+    : envelope;
+
+  // Merge top-level fields from raw into payload for easy access
+  const merged = { ...payload };
+  for (const key of ["summary", "message", "pr_number", "po_number", "vendor_name", "total_amount",
+    "actions_completed", "human_action_required", "suggested_next_actions", "status",
+    "workflow_type", "workflow_id", "workflow_run_id", "current_step", "top_vendor_options", "validations",
+    "warnings", "gap_alerts", "pending_exceptions"]) {
+    if (merged[key] === undefined && get(raw, key) !== undefined) {
+      merged[key] = get(raw, key);
+    }
+  }
+
+  return {
+    kind: "p2p_full",
+    agent: "P2POrchestrator",
+    status: String(get(merged, "status") || "in_progress"),
+    payload: merged,
+    dataSource: "Agentic",
+    queryType: "P2P_FULL",
+    decision: null,
+    agentsInvoked: get(raw, "agents_invoked") ?? get(envelope, "agents_invoked") ?? [],
+    multiResults: null,
+    executionTimeMs: undefined,
+  };
+}
+
 function extractPrWorkflow(envelope: any, raw: any, fallback?: string): NormalisedResult {
+  // Merge top-level fields from raw into envelope for easy access by formatters.
+  // The backend emit_complete now merges workflow_type/top_vendor_options/etc to the top level,
+  // but we also do it here for robustness.
+  const merged = { ...(envelope && typeof envelope === "object" ? envelope : {}) };
+  for (const key of [
+    "top_vendor_options", "awaiting_vendor_confirmation", "message",
+    "workflow_run_id", "validations", "pr_object", "vendor_selection_note",
+    "workflow_context", "warnings", "actions_completed", "failure_reason",
+    "pr_number", "po_number", "vendor_name", "total_amount",
+    "human_action_required", "gap_alerts", "pending_exceptions",
+  ]) {
+    if (merged[key] === undefined) {
+      const val = get(raw, key);
+      if (val !== undefined) merged[key] = val;
+    }
+  }
+
   return {
     kind: "pr_workflow",
-    agent: "PRCreationWorkflow",
-    status: String(get(envelope, "status") || "in_progress"),
-    payload: envelope,
+    agent: fallback || "PRCreationWorkflow",
+    status: String(get(merged, "status") || "in_progress"),
+    payload: merged,
     dataSource: "Agentic",
     queryType: "CREATE",
     decision: null,
-    agentsInvoked: get(envelope, "agents_invoked") ?? [],
+    agentsInvoked: get(raw, "agents_invoked") ?? get(envelope, "agents_invoked") ?? [],
     multiResults: null,
     executionTimeMs: undefined,
   };
@@ -256,10 +335,10 @@ function extractOdooData(envelope: any, raw: any, fallback?: string): Normalised
   const payload = get(envelope, "result") ?? envelope;
   return {
     kind: "odoo",
-    agent: get(envelope, "agent") || "OdooDataService",
+    agent: get(envelope, "agent") || "ERPDataService",
     status: "completed",
     payload: payload && typeof payload === "object" ? payload : {},
-    dataSource: "Odoo",
+    dataSource: "ERP",
     queryType: String(get(payload, "query_type") || get(envelope, "query_type") || "purchase_orders"),
     decision: null,
     agentsInvoked: [],
@@ -275,7 +354,11 @@ function resolveDataSource(
     const ds = get(s, "data_source");
     if (ds) {
       const v = String(ds).toLowerCase();
-      if (v.includes("odoo")) return "Odoo";
+      if (v.includes("odoo")) return "ERP (Odoo)";
+      if (v.includes("sap")) return "ERP (SAP)";
+      if (v.includes("dynamics")) return "ERP (Dynamics 365)";
+      if (v.includes("oracle")) return "ERP (Oracle)";
+      if (v.includes("erpnext")) return "ERP (ERPNext)";
       if (v.includes("agent")) return "Agentic";
       if (v.includes("budget")) return "Budget Tracking";
       if (v.includes("approval")) return "Approval Chains";
@@ -286,7 +369,7 @@ function resolveDataSource(
   const agentName = String(
     get(sources[1], "agent") || get(sources[0], "agent") || ""
   ).toLowerCase();
-  if (agentName.includes("odoo")) return "Odoo";
+  if (agentName.includes("odoo")) return "ERP (Odoo)";
   return "Agentic";
 }
 
@@ -365,6 +448,10 @@ export function isOdooPoResult(r: NormalisedResult): boolean {
 
 export function isPrWorkflow(r: NormalisedResult): boolean {
   return r.kind === "pr_workflow" || r.payload?.workflow_type === "pr_creation";
+}
+
+export function isP2PWorkflow(r: NormalisedResult): boolean {
+  return r.kind === "p2p_full" || r.payload?.workflow_type === "P2P_FULL";
 }
 
 export function isMultiIntent(r: NormalisedResult): boolean {

@@ -13,27 +13,28 @@ import PendingApprovalsPage from "@/pages/PendingApprovalsPage";
 import ApprovalWorkflowPage from "@/pages/ApprovalWorkflowPage";
 import MyApprovalsPage from "@/pages/MyApprovalsPage";
 import ApprovalSettingsPage from "@/pages/ApprovalSettingsPage";
-import AgentProcessPage from "@/pages/AgentProcessPage";
-import AgenticFlowPage from "@/pages/AgenticFlowPage";
 import PipelinePage from "@/pages/PipelinePage";
 import GoodsReceiptPage from "@/pages/GoodsReceiptPage";
-import VendorOnboardingPage from "@/pages/VendorOnboardingPage";
 import DeliveryTrackingPage from "@/pages/DeliveryTrackingPage";
 import ForecastingPage from "@/pages/ForecastingPage";
-import PipelineVisualizerPage from "@/pages/PipelineVisualizerPage";
 import SpendAnalyticsPage from "@/pages/SpendAnalyticsPage";
 import SupplierPerformancePage from "@/pages/SupplierPerformancePage";
 import ContractMonitoringPage from "@/pages/ContractMonitoringPage";
 import SystemHealthPage from "@/pages/SystemHealthPage";
 import RiskAssessmentPage from "@/pages/RiskAssessmentPage";
 import DocumentProcessingPage from "@/pages/DocumentProcessingPage";
-import PurchaseRequisitionPage from "@/pages/PurchaseRequisitionPage";
 import BudgetPage from "@/pages/BudgetPage";
 import AnomalyDetectionPage from "@/pages/AnomalyDetectionPage";
 import IntegrationsPage from "@/pages/IntegrationsPage";
 import PaymentExecutionPage from "@/pages/PaymentExecutionPage";
 import AgingReportPage from "@/pages/AgingReportPage";
 import CycleTimeReportPage from "@/pages/CycleTimeReportPage";
+import DataImportPage from "@/pages/DataImportPage";
+import DataQualityPage from "@/pages/DataQualityPage";
+import RFQPage from "@/pages/RFQPage";
+import ReconciliationPage from "@/pages/ReconciliationPage";
+import SessionPage from "@/pages/SessionPage";
+import SessionsListPage from "@/pages/SessionsListPage";
 
 // Protected Route Component with Layout
 function ProtectedRoute({ component: Component }: { component: () => JSX.Element }) {
@@ -51,19 +52,6 @@ function ProtectedRoute({ component: Component }: { component: () => JSX.Element
       <Component />
     </MainLayout>
   ) : null;
-}
-
-function ProtectedFullscreenRoute({ component: Component }: { component: () => JSX.Element }) {
-  const [, setLocation] = useLocation();
-  const isAuthenticated = localStorage.getItem("isAuthenticated") === "true";
-
-  useEffect(() => {
-    if (!isAuthenticated) {
-      setLocation("/");
-    }
-  }, [isAuthenticated, setLocation]);
-
-  return isAuthenticated ? <Component /> : null;
 }
 
 function Router() {
@@ -85,9 +73,6 @@ function Router() {
       <Route path="/dashboard">
         <ProtectedRoute component={DashboardPage} />
       </Route>
-      <Route path="/agentic-flow">
-        <ProtectedRoute component={AgenticFlowPage} />
-      </Route>
       <Route path="/pending-approvals">
         <ProtectedRoute component={PendingApprovalsPage} />
       </Route>
@@ -100,29 +85,17 @@ function Router() {
       <Route path="/approval-settings">
         <ProtectedRoute component={ApprovalSettingsPage} />
       </Route>
-      <Route path="/process">
-        <ProtectedRoute component={AgentProcessPage} />
-      </Route>
-      <Route path="/executive-demo">
-        <ProtectedFullscreenRoute component={AgentProcessPage} />
-      </Route>
       <Route path="/pipeline">
         <ProtectedRoute component={PipelinePage} />
       </Route>
       <Route path="/goods-receipt">
         <ProtectedRoute component={GoodsReceiptPage} />
       </Route>
-      <Route path="/vendor-onboarding">
-        <ProtectedRoute component={VendorOnboardingPage} />
-      </Route>
       <Route path="/delivery-tracking">
         <ProtectedRoute component={DeliveryTrackingPage} />
       </Route>
       <Route path="/forecasting">
         <ProtectedRoute component={ForecastingPage} />
-      </Route>
-      <Route path="/pipeline-visualizer">
-        <ProtectedRoute component={PipelineVisualizerPage} />
       </Route>
       <Route path="/spend-analytics">
         <ProtectedRoute component={SpendAnalyticsPage} />
@@ -142,9 +115,6 @@ function Router() {
       <Route path="/document-processing">
         <ProtectedRoute component={DocumentProcessingPage} />
       </Route>
-      <Route path="/purchase-requisitions">
-        <ProtectedRoute component={PurchaseRequisitionPage} />
-      </Route>
       <Route path="/budget">
         <ProtectedRoute component={BudgetPage} />
       </Route>
@@ -162,6 +132,24 @@ function Router() {
       </Route>
       <Route path="/cycle-times">
         <ProtectedRoute component={CycleTimeReportPage} />
+      </Route>
+      <Route path="/data-import">
+        <ProtectedRoute component={DataImportPage} />
+      </Route>
+      <Route path="/data-quality">
+        <ProtectedRoute component={DataQualityPage} />
+      </Route>
+      <Route path="/rfq">
+        <ProtectedRoute component={RFQPage} />
+      </Route>
+      <Route path="/reconciliation">
+        <ProtectedRoute component={ReconciliationPage} />
+      </Route>
+      <Route path="/sessions/:id">
+        <ProtectedRoute component={SessionPage} />
+      </Route>
+      <Route path="/sessions">
+        <ProtectedRoute component={SessionsListPage} />
       </Route>
       <Route component={NotFound} />
     </Switch>

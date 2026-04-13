@@ -3,10 +3,13 @@ Sprint 5C Batch 1 — Purchase Requisitions, RFQ Headers, Vendor Quotes, Contrac
 6 ERPs × 4 modules = 24 tables
 """
 import os, sys
-os.chdir("E:/procure AI/Procure-AI"); sys.path.insert(0, ".")
+from pathlib import Path
+os.chdir(str(Path(__file__).resolve().parents[2])); sys.path.insert(0, ".")
 import psycopg2
 from psycopg2.extras import execute_values
-conn = psycopg2.connect("postgresql://postgres:YourStr0ng!Pass@localhost:5433/odoo_procurement_demo")
+from dotenv import load_dotenv
+load_dotenv()
+conn = psycopg2.connect(os.environ.get("DATABASE_URL", "postgresql://postgres:postgres@localhost:5433/odoo_procurement_demo"))
 cur = conn.cursor()
 
 ERPS = ['odoo','sap_s4','sap_b1','dynamics','oracle','erpnext']
@@ -465,7 +468,7 @@ execute_values(cur, """
      f'DEPT-{DEPTS[i%10]}')
     for i in range(10)
 ])
-print("  ✓ purchase_requisitions_odoo (10)")
+print("  purchase_requisitions_odoo (10)")
 
 # SAP S/4
 cur.execute("DELETE FROM purchase_requisitions_sap_s4")
@@ -483,7 +486,7 @@ execute_values(cur, """
      ' ', '00' if i < 8 else 'ZZ', 'NB')
     for i in range(10)
 ])
-print("  ✓ purchase_requisitions_sap_s4 (10)")
+print("  purchase_requisitions_sap_s4 (10)")
 
 # SAP B1
 cur.execute("DELETE FROM purchase_requisitions_sap_b1")
@@ -501,7 +504,7 @@ execute_values(cur, """
      'O' if i >= 8 else 'C')
     for i in range(10)
 ])
-print("  ✓ purchase_requisitions_sap_b1 (10)")
+print("  purchase_requisitions_sap_b1 (10)")
 
 # Dynamics
 cur.execute("DELETE FROM purchase_requisitions_dynamics")
@@ -521,7 +524,7 @@ execute_values(cur, """
      f'2025-0{(i%6)+2}-15', f'CC-{i%5+1:03d}')
     for i in range(10)
 ])
-print("  ✓ purchase_requisitions_dynamics (10)")
+print("  purchase_requisitions_dynamics (10)")
 
 # Oracle
 cur.execute("DELETE FROM purchase_requisitions_oracle")
@@ -542,7 +545,7 @@ execute_values(cur, """
      f'2025-0{(i%6)+2}-15', f'CC-{i%5+1:03d}')
     for i in range(10)
 ])
-print("  ✓ purchase_requisitions_oracle (10)")
+print("  purchase_requisitions_oracle (10)")
 
 # ERPNext
 cur.execute("DELETE FROM purchase_requisitions_erpnext")
@@ -566,7 +569,7 @@ execute_values(cur, """
      'Procure-AI Demo Company')
     for i in range(10)
 ])
-print("  ✓ purchase_requisitions_erpnext (10)")
+print("  purchase_requisitions_erpnext (10)")
 
 conn.commit()
 print("\nSeeding rfq_headers...")
@@ -588,7 +591,7 @@ execute_values(cur, """
      f'PR/2025/{str(i+1).zfill(5)}')
     for i in range(8)
 ])
-print("  ✓ rfq_headers_odoo (8)")
+print("  rfq_headers_odoo (8)")
 
 # SAP S/4
 cur.execute("DELETE FROM rfq_headers_sap_s4")
@@ -605,7 +608,7 @@ execute_values(cur, """
      'ORG1', 'GRP', float((i+1)*1000), 'USD', 'B')
     for i in range(8)
 ])
-print("  ✓ rfq_headers_sap_s4 (8)")
+print("  rfq_headers_sap_s4 (8)")
 
 # SAP B1
 cur.execute("DELETE FROM rfq_headers_sap_b1")
@@ -620,7 +623,7 @@ execute_values(cur, """
      float((i+1)*1000), 'USD', 'O' if i >= 6 else 'C')
     for i in range(8)
 ])
-print("  ✓ rfq_headers_sap_b1 (8)")
+print("  rfq_headers_sap_b1 (8)")
 
 # Dynamics
 cur.execute("DELETE FROM rfq_headers_dynamics")
@@ -638,7 +641,7 @@ execute_values(cur, """
      'Sent' if i < 7 else 'Created')
     for i in range(8)
 ])
-print("  ✓ rfq_headers_dynamics (8)")
+print("  rfq_headers_dynamics (8)")
 
 # Oracle
 cur.execute("DELETE FROM rfq_headers_oracle")
@@ -657,7 +660,7 @@ execute_values(cur, """
      'Ahmed Khan')
     for i in range(8)
 ])
-print("  ✓ rfq_headers_oracle (8)")
+print("  rfq_headers_oracle (8)")
 
 # ERPNext
 cur.execute("DELETE FROM rfq_headers_erpnext")
@@ -676,7 +679,7 @@ execute_values(cur, """
      'Procure-AI Demo Company')
     for i in range(8)
 ])
-print("  ✓ rfq_headers_erpnext (8)")
+print("  rfq_headers_erpnext (8)")
 
 conn.commit()
 print("\nSeeding vendor_quotes...")
@@ -694,7 +697,7 @@ execute_values(cur, """INSERT INTO vendor_quotes_odoo
      'purchase' if i < 5 else 'sent', i < 3)
     for i in range(8)
 ])
-print("  ✓ vendor_quotes_odoo (8)")
+print("  vendor_quotes_odoo (8)")
 
 execute_values(cur, """INSERT INTO vendor_quotes_sap_s4
     (ANGPF,EBELN,LIFNR,ANGDT,BNDDT,NETWR,WAERS,PREIS,MENGE,EKORG,SELKZ)
@@ -708,7 +711,7 @@ execute_values(cur, """INSERT INTO vendor_quotes_sap_s4
      'X' if i < 3 else ' ')
     for i in range(8)
 ])
-print("  ✓ vendor_quotes_sap_s4 (8)")
+print("  vendor_quotes_sap_s4 (8)")
 
 execute_values(cur, """INSERT INTO vendor_quotes_sap_b1
     (DocNum,DocDate,ValidUntil,CardCode,CardName,BaseRef,
@@ -721,7 +724,7 @@ execute_values(cur, """INSERT INTO vendor_quotes_sap_b1
      'O' if i >= 5 else 'C', 'Y' if i < 3 else 'N')
     for i in range(8)
 ])
-print("  ✓ vendor_quotes_sap_b1 (8)")
+print("  vendor_quotes_sap_b1 (8)")
 
 execute_values(cur, """INSERT INTO vendor_quotes_dynamics
     (ReplyJournalNumber,RFQCaseNumber,VendorAccountNumber,VendorName,
@@ -736,7 +739,7 @@ execute_values(cur, """INSERT INTO vendor_quotes_dynamics
      'Accepted' if i < 5 else 'Submitted')
     for i in range(8)
 ])
-print("  ✓ vendor_quotes_dynamics (8)")
+print("  vendor_quotes_dynamics (8)")
 
 execute_values(cur, """INSERT INTO vendor_quotes_oracle
     (ResponseNumber,NegotiationNumber,SupplierNumber,SupplierName,
@@ -751,7 +754,7 @@ execute_values(cur, """INSERT INTO vendor_quotes_oracle
      'ACTIVE' if i < 5 else 'DRAFT')
     for i in range(8)
 ])
-print("  ✓ vendor_quotes_oracle (8)")
+print("  vendor_quotes_oracle (8)")
 
 execute_values(cur, """INSERT INTO vendor_quotes_erpnext
     (name,rfq_reference,supplier,supplier_name,transaction_date,
@@ -768,7 +771,7 @@ execute_values(cur, """INSERT INTO vendor_quotes_erpnext
      'Procure-AI Demo Company')
     for i in range(8)
 ])
-print("  ✓ vendor_quotes_erpnext (8)")
+print("  vendor_quotes_erpnext (8)")
 
 conn.commit()
 print("\nSeeding contracts...")
@@ -785,7 +788,7 @@ execute_values(cur, """INSERT INTO contracts_odoo
      'Net 30')
     for i in range(6)
 ])
-print("  ✓ contracts_odoo (6)")
+print("  contracts_odoo (6)")
 
 execute_values(cur, """INSERT INTO contracts_sap_s4
     (EBELN,BSART,LIFNR,BEDAT,KDATB,KDATE,EKORG,EKGRP,NETWR,WAERS,STATUS)
@@ -799,7 +802,7 @@ execute_values(cur, """INSERT INTO contracts_sap_s4
      'A' if i < 4 else 'I')
     for i in range(6)
 ])
-print("  ✓ contracts_sap_s4 (6)")
+print("  contracts_sap_s4 (6)")
 
 execute_values(cur, """INSERT INTO contracts_sap_b1
     (AgreementNo,CardCode,CardName,StartDate,EndDate,
@@ -812,7 +815,7 @@ execute_values(cur, """INSERT INTO contracts_sap_b1
      f'Annual supply contract {i+1}')
     for i in range(6)
 ])
-print("  ✓ contracts_sap_b1 (6)")
+print("  contracts_sap_b1 (6)")
 
 execute_values(cur, """INSERT INTO contracts_dynamics
     (AgreementNumber,AgreementClassification,VendorAccountNumber,VendorName,
@@ -825,7 +828,7 @@ execute_values(cur, """INSERT INTO contracts_dynamics
      'Effective' if i < 4 else 'Expired')
     for i in range(6)
 ])
-print("  ✓ contracts_dynamics (6)")
+print("  contracts_dynamics (6)")
 
 execute_values(cur, """INSERT INTO contracts_oracle
     (ContractNumber,ContractType,SupplierNumber,SupplierName,
@@ -838,7 +841,7 @@ execute_values(cur, """INSERT INTO contracts_oracle
      'ACTIVE' if i < 4 else 'EXPIRED', 'Ahmed Khan')
     for i in range(6)
 ])
-print("  ✓ contracts_oracle (6)")
+print("  contracts_oracle (6)")
 
 execute_values(cur, """INSERT INTO contracts_erpnext
     (name,supplier,supplier_name,start_date,end_date,
@@ -852,7 +855,7 @@ execute_values(cur, """INSERT INTO contracts_erpnext
      'Annual Contract', 'Procure-AI Demo Company')
     for i in range(6)
 ])
-print("  ✓ contracts_erpnext (6)")
+print("  contracts_erpnext (6)")
 
 conn.commit()
 

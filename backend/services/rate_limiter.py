@@ -2,6 +2,7 @@
 Rate Limiting Service
 Prevents API abuse and controls OpenAI costs using token bucket algorithm
 """
+import os
 import time
 import logging
 from typing import Dict, Optional, Any
@@ -10,23 +11,54 @@ from threading import Lock
 
 logger = logging.getLogger(__name__)
 
+# ── Sprint E fix (2026-04-11) ───────────────────────────────────────────────
+# The SessionPage UI polls several endpoints every few seconds
+# (/api/sessions/<id>, /events, /gates/pending, /config/data-source,
+# /agentic/pending-approvals/count, /agentic/approval-chains). Combined with
+# background ticks from other pages this trivially blows past 60/min and
+# renders the whole app unusable behind a wall of 429s.
+#
+# The new defaults are deliberately generous for a dev/demo build. A
+# production deployment can tighten them back with the RATE_LIMIT_*
+# env-vars. Setting RATE_LIMIT_DISABLED=true short-circuits the check
+# entirely for local testing.
+# ───────────────────────────────────────────────────────────────────────────
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        return default
+
+
+RATE_LIMIT_DISABLED = os.environ.get("RATE_LIMIT_DISABLED", "false").lower() in (
+    "1", "true", "yes", "on",
+)
+
 # Rate limit configuration
 RATE_LIMITS = {
     "default": {
-        "requests_per_minute": 60,      # 60 requests per minute
-        "requests_per_hour": 1000,      # 1000 requests per hour
-        "requests_per_day": 10000       # 10,000 requests per day
+        "requests_per_minute": _env_int("RATE_LIMIT_DEFAULT_PER_MINUTE", 600),
+        "requests_per_hour":   _env_int("RATE_LIMIT_DEFAULT_PER_HOUR", 10000),
+        "requests_per_day":    _env_int("RATE_LIMIT_DEFAULT_PER_DAY", 50000),
     },
     "agentic": {
-        "requests_per_minute": 20,      # 20 agentic requests per minute (expensive)
-        "requests_per_hour": 300,       # 300 per hour
-        "requests_per_day": 2000        # 2000 per day
+        "requests_per_minute": _env_int("RATE_LIMIT_AGENTIC_PER_MINUTE", 600),
+        "requests_per_hour":   _env_int("RATE_LIMIT_AGENTIC_PER_HOUR", 10000),
+        "requests_per_day":    _env_int("RATE_LIMIT_AGENTIC_PER_DAY", 50000),
     },
     "chat": {
-        "requests_per_minute": 30,      # 30 chat requests per minute
-        "requests_per_hour": 500,       # 500 per hour
-        "requests_per_day": 5000        # 5000 per day
-    }
+        "requests_per_minute": _env_int("RATE_LIMIT_CHAT_PER_MINUTE", 300),
+        "requests_per_hour":   _env_int("RATE_LIMIT_CHAT_PER_HOUR", 5000),
+        "requests_per_day":    _env_int("RATE_LIMIT_CHAT_PER_DAY", 20000),
+    },
+    # Polling endpoints (session reads, gate list, config). These are pure
+    # reads and the frontend legitimately hits them multiple times per second.
+    "polling": {
+        "requests_per_minute": _env_int("RATE_LIMIT_POLLING_PER_MINUTE", 2000),
+        "requests_per_hour":   _env_int("RATE_LIMIT_POLLING_PER_HOUR", 60000),
+        "requests_per_day":    _env_int("RATE_LIMIT_POLLING_PER_DAY", 500000),
+    },
 }
 
 # Global rate limit tracking
@@ -77,14 +109,18 @@ def check_rate_limit(
 ) -> Optional[RateLimitExceeded]:
     """
     Check if user has exceeded rate limits.
-    
+
     Args:
         user_id: Unique identifier for user (IP, session ID, etc.)
-        endpoint_type: Type of endpoint ("default", "agentic", "chat")
-    
+        endpoint_type: Type of endpoint ("default", "agentic", "chat", "polling")
+
     Returns:
         RateLimitExceeded exception if limit exceeded, None otherwise
     """
+    # Sprint E fix: complete bypass for local / dev when env-var flips on.
+    if RATE_LIMIT_DISABLED:
+        return None
+
     current_time = time.time()
     limits = RATE_LIMITS.get(endpoint_type, RATE_LIMITS["default"])
     

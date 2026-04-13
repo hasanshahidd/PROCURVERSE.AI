@@ -41,7 +41,7 @@ interface ResultCardProps {
     email: string;
     status: string;
   }>;
-  onShowPipeline: () => void;
+  onShowPipeline?: () => void;
   onViewApprovalChain?: () => void;
 }
 
@@ -168,54 +168,60 @@ export function ResultCard({
             </div>
           )}
 
-          {/* Action Buttons */}
-          <div className="p-4 border-t border-blue-200 dark:border-blue-800/50 flex gap-2">
-            <Button
-              onClick={onShowPipeline}
-              variant="outline"
-              size="sm"
-              className="flex-1 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white border-0 shadow-sm transition-all"
-            >
-              <svg
-                className="w-4 h-4 mr-2"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-                />
-              </svg>
-              Show Pipeline
-            </Button>
-
-            {approvalChain && approvalChain.length > 0 && onViewApprovalChain && (
-              <Button
-                onClick={onViewApprovalChain}
-                variant="outline"
-                size="sm"
-                className="flex-1 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border-purple-500/30"
-              >
-                <svg
-                  className="w-4 h-4 mr-2"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
+          {/* Action Buttons — only rendered if at least one action is provided.
+              Sprint B: `/process` page is deleted, so ChatPage no longer passes
+              onShowPipeline. Approval-chain action remains optional. */}
+          {(onShowPipeline || (approvalChain && approvalChain.length > 0 && onViewApprovalChain)) && (
+            <div className="p-4 border-t border-blue-200 dark:border-blue-800/50 flex gap-2">
+              {onShowPipeline && (
+                <Button
+                  onClick={onShowPipeline}
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white border-0 shadow-sm transition-all"
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-                View Approval Chain
-              </Button>
-            )}
-          </div>
+                  <svg
+                    className="w-4 h-4 mr-2"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                    />
+                  </svg>
+                  Show Pipeline
+                </Button>
+              )}
+
+              {approvalChain && approvalChain.length > 0 && onViewApprovalChain && (
+                <Button
+                  onClick={onViewApprovalChain}
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border-purple-500/30"
+                >
+                  <svg
+                    className="w-4 h-4 mr-2"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  View Approval Chain
+                </Button>
+              )}
+            </div>
+          )}
         </motion.div>
       )}
     </motion.div>

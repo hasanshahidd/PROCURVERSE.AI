@@ -129,12 +129,12 @@ def send_approval_request(pr_data: dict, approver_slack_id: str = "") -> dict:
     created_date = pr_data.get("created_date", "Today")
 
     # Priority badge
-    priority_icons = {"high": "🔴 High", "medium": "🟡 Medium", "low": "🟢 Low"}
-    priority_label = priority_icons.get(priority, f"🟡 {priority.capitalize()}")
+    priority_icons = {"high": "High", "medium": "Medium", "low": "Low"}
+    priority_label = priority_icons.get(priority, f"{priority.capitalize()}")
 
     # Optional @mention
     mention_text = f" — <@{approver_slack_id}>" if approver_slack_id else ""
-    header_text  = f"🔔 New PR Approval Required{mention_text}"
+    header_text  = f"New PR Approval Required{mention_text}"
 
     blocks = [
         {
@@ -167,14 +167,14 @@ def send_approval_request(pr_data: dict, approver_slack_id: str = "") -> dict:
             "elements": [
                 {
                     "type": "button",
-                    "text": {"type": "plain_text", "text": "✅ Approve", "emoji": True},
+                    "text": {"type": "plain_text", "text": "Approve", "emoji": True},
                     "style": "primary",
                     "value": pr_number,
                     "action_id": "approve_pr",
                 },
                 {
                     "type": "button",
-                    "text": {"type": "plain_text", "text": "❌ Reject", "emoji": True},
+                    "text": {"type": "plain_text", "text": "Reject", "emoji": True},
                     "style": "danger",
                     "value": pr_number,
                     "action_id": "reject_pr",
@@ -215,7 +215,7 @@ def send_payment_alert(payment_data: dict) -> dict:
     blocks = [
         {
             "type": "header",
-            "text": {"type": "plain_text", "text": "💳 New Payment Run Created", "emoji": True},
+            "text": {"type": "plain_text", "text": "New Payment Run Created", "emoji": True},
         },
         {
             "type": "section",
@@ -231,7 +231,7 @@ def send_payment_alert(payment_data: dict) -> dict:
             "elements": [
                 {
                     "type": "button",
-                    "text": {"type": "plain_text", "text": "📊 View Dashboard", "emoji": True},
+                    "text": {"type": "plain_text", "text": "View Dashboard", "emoji": True},
                     "url": dashboard_url,
                     "action_id": "view_payment_dashboard",
                 }
@@ -273,8 +273,8 @@ def send_anomaly_alert(anomaly: dict) -> dict:
     channel     = anomaly.get("channel") or _approval_channel()
 
     # Severity icon
-    severity_icons = {"danger": "🚨", "warning": "⚠️", "good": "✅"}
-    icon = severity_icons.get(severity, "⚠️")
+    severity_icons = {"danger": "", "warning": "️", "good": ""}
+    icon = severity_icons.get(severity, "️")
 
     # Slack legacy attachment for color coding (Block Kit doesn't support sidebar color)
     attachments = [
@@ -369,9 +369,9 @@ def handle_interactive_payload(payload: dict) -> dict:
 
     # Build updated blocks (replace buttons with status text)
     if action_id == "approve_pr":
-        status_text = f"✅ *Approved* by @{username}"
+        status_text = f"*Approved* by @{username}"
     elif action_id == "reject_pr":
-        status_text = f"❌ *Rejected* by @{username}"
+        status_text = f"*Rejected* by @{username}"
     else:
         status_text = f"Action `{action_id}` recorded by @{username}"
 

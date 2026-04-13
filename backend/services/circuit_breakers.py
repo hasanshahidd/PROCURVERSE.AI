@@ -65,7 +65,7 @@ FALLBACK_DATA = {
             "approval_level": 1,
             "approver_name": "Manager (System Offline)",
             "budget_threshold": 50000,
-            "message": "⚠️ System unavailable - showing cached approval chain"
+            "message": "️ System unavailable - showing cached approval chain"
         }
     ],
     "budget_status": {
@@ -73,27 +73,27 @@ FALLBACK_DATA = {
         "allocated_budget": 0,
         "spent_budget": 0,
         "available_budget": 0,
-        "message": "⚠️ Database unavailable - budget data unavailable"
+        "message": "️ Database unavailable - budget data unavailable"
     },
     "vendors": [
         {
             "id": 0,
             "name": "System Offline",
-            "message": "⚠️ Cannot retrieve vendors - Odoo unavailable"
+            "message": "️ Cannot retrieve vendors - Odoo unavailable"
         }
     ],
     "purchase_orders": [
         {
             "id": 0,
             "name": "System Offline",
-            "message": "⚠️ Cannot retrieve purchase orders - Odoo unavailable"
+            "message": "️ Cannot retrieve purchase orders - Odoo unavailable"
         }
     ],
     "products": [
         {
             "id": 0,
             "name": "System Offline",
-            "message": "⚠️ Cannot retrieve products - Odoo unavailable"
+            "message": "️ Cannot retrieve products - Odoo unavailable"
         }
     ]
 }
@@ -109,7 +109,7 @@ def get_fallback_data(data_type: str) -> Any:
     Returns:
         Fallback data with warning message
     """
-    fallback = FALLBACK_DATA.get(data_type, {"message": "⚠️ System unavailable"})
+    fallback = FALLBACK_DATA.get(data_type, {"message": "️ System unavailable"})
     logger.warning(f"[CIRCUIT BREAKER] Returning fallback data for {data_type}")
     return fallback
 

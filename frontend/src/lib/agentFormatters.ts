@@ -39,27 +39,48 @@ export function formatBudgetResult(r: NormalisedResult): string {
   // ── Budget Status Report (query without a specific purchase amount) ──
   if (p.status === "budget_status") {
     const report = (p.budget_status_report || {}) as Record<string, any>;
-    const dept = p.department || report.department || "Unknown";
+    const rawDept = p.department || report.department || "";
     const budgets: any[] = Array.isArray(report.budgets) ? report.budgets : [];
 
-    let md = `## 📊 ${dept} Department Budget Status\n\n`;
+    // Determine if showing all departments or a specific one
+    const uniqueDepts = [...new Set(budgets.map((b: any) => b.department).filter(Boolean))];
+    const isAllDepts = !rawDept || rawDept.toLowerCase() === "unknown" || uniqueDepts.length > 1;
+    const deptLabel = isAllDepts ? "All Departments" : (rawDept || uniqueDepts[0] || "General");
+
+    let md = `## 📊 ${deptLabel} Budget Status\n\n`;
 
     if (budgets.length === 0) {
-      md += `No budget data found for ${dept}.\n`;
+      md += `No budget data found${rawDept ? ` for ${rawDept}` : ""}.\n`;
       return md;
     }
 
-    md += mdTable(
-      ["Category", "Allocated", "Spent", "Committed", "Available", "Utilization"],
-      budgets.map((b: any) => [
-        b.category,
-        `$${Number(b.allocated).toLocaleString()}`,
-        `$${Number(b.spent).toLocaleString()}`,
-        `$${Number(b.committed).toLocaleString()}`,
-        `$${Number(b.available).toLocaleString()}`,
-        `${Number(b.utilization_pct).toFixed(1)}%`,
-      ])
-    );
+    // Include Department column when showing multiple departments
+    if (isAllDepts) {
+      md += mdTable(
+        ["Department", "Category", "Allocated", "Spent", "Committed", "Available", "Utilization"],
+        budgets.map((b: any) => [
+          b.department || "—",
+          b.category,
+          `$${Number(b.allocated).toLocaleString()}`,
+          `$${Number(b.spent).toLocaleString()}`,
+          `$${Number(b.committed).toLocaleString()}`,
+          `$${Number(b.available).toLocaleString()}`,
+          `${Number(b.utilization_pct).toFixed(1)}%`,
+        ])
+      );
+    } else {
+      md += mdTable(
+        ["Category", "Allocated", "Spent", "Committed", "Available", "Utilization"],
+        budgets.map((b: any) => [
+          b.category,
+          `$${Number(b.allocated).toLocaleString()}`,
+          `$${Number(b.spent).toLocaleString()}`,
+          `$${Number(b.committed).toLocaleString()}`,
+          `$${Number(b.available).toLocaleString()}`,
+          `${Number(b.utilization_pct).toFixed(1)}%`,
+        ])
+      );
+    }
 
     budgets.forEach((b: any) => {
       const util = Number(b.utilization_pct);
@@ -374,7 +395,7 @@ export function formatOdooPoResult(r: NormalisedResult): string {
   const total = Number(p.total_purchase_orders || 0);
   const orders = Array.isArray(p.purchase_orders) ? p.purchase_orders : [];
 
-  let md = `## 📦 Purchase Orders (Live Odoo Data)\n\n`;
+  let md = `## 📦 Purchase Orders (ERP Data)\n\n`;
   md += `**Total Purchase Orders:** ${total}\n\n`;
   if (orders.length > 0) {
     md += `### Purchase Order Details\n`;
@@ -683,6 +704,180 @@ export function formatMultiIntentResult(r: NormalisedResult): string {
   return md;
 }
 
+// ─── P2P Full Workflow ─────────────────────────────────────────────────
+
+export function formatP2PResult(r: NormalisedResult): string {
+  const p = r.payload;
+  const status = String(p.status || "in_progress").toLowerCase();
+  const prNumber = p.pr_number || "Pending";
+  const poNumber = p.po_number || "Pending";
+  const vendorName = p.vendor_name || "Pending selection";
+  const totalAmount = p.total_amount ? `$${Number(p.total_amount).toLocaleString()}` : "TBD";
+  const summary = p.summary || p.message || "";
+  const actionsCompleted: any[] = Array.isArray(p.actions_completed) ? p.actions_completed : [];
+  const humanAction = p.human_action_required;
+  const suggestions: string[] = Array.isArray(p.suggested_next_actions) ? p.suggested_next_actions : [];
+
+  // P2P step definitions for display
+  const P2P_STEPS = [
+    { key: "compliance_check", label: "Compliance Check", icon: "📋" },
+    { key: "budget_verification", label: "Budget Verification", icon: "💰" },
+    { key: "vendor_selection", label: "Vendor Selection", icon: "🏢" },
+    { key: "vendor_confirmation", label: "Vendor Confirmation", icon: "✋" },
+    { key: "pr_creation", label: "PR Creation", icon: "📝" },
+    { key: "approval_routing", label: "Approval Routing", icon: "📋" },
+    { key: "approval_wait", label: "Manager Approval", icon: "✋" },
+    { key: "po_creation", label: "PO Creation", icon: "📦" },
+    { key: "delivery_tracking", label: "Delivery Tracking", icon: "🚚" },
+    { key: "grn_entry", label: "Goods Receipt", icon: "✋" },
+    { key: "quality_inspection", label: "Quality Inspection", icon: "🔍" },
+    { key: "invoice_matching", label: "Invoice Matching", icon: "🧾" },
+    { key: "three_way_match", label: "3-Way Match", icon: "🔗" },
+    { key: "payment_readiness", label: "Payment Readiness", icon: "✅" },
+    { key: "payment_execution", label: "Payment Execution", icon: "💳" },
+  ];
+
+  const normalizeStepKey = (key: string): string => {
+    const k = (key || "").toLowerCase().replace(/[\-\s]+/g, "_");
+    const aliases: Record<string, string> = {
+      compliance: "compliance_check",
+      vendor_select: "vendor_selection",
+      vendor_confirm: "vendor_confirmation",
+      pr_create: "pr_creation",
+      approval_route: "approval_routing",
+      po_create: "po_creation",
+      delivery: "delivery_tracking",
+      grn: "grn_entry",
+      quality: "quality_inspection",
+      invoice: "invoice_matching",
+      three_way: "three_way_match",
+      payment_ready: "payment_readiness",
+      payment: "payment_execution",
+    };
+    return aliases[k] || k;
+  };
+  const completedKeys = new Set(actionsCompleted.map((a: any) => normalizeStepKey(a.step)));
+  const currentStep = p.current_step || "";
+
+  // Header
+  let md = `## 🔄 Procure-to-Pay Pipeline\n\n`;
+
+  if (summary) {
+    md += `> ${summary}\n\n`;
+  }
+
+  // Key metrics
+  md += mdTable(
+    ["Metric", "Value"],
+    [
+      ["Vendor", vendorName],
+      ["Total Amount", totalAmount],
+      ["PR Number", prNumber],
+      ["PO Number", poNumber],
+      ["Status", toTitle(status.replace(/_/g, " "))],
+    ]
+  );
+  md += "\n";
+
+  // Pipeline progress
+  const completedCount = actionsCompleted.length;
+  const totalSteps = P2P_STEPS.length;
+  const progressPct = Math.round((completedCount / totalSteps) * 100);
+  md += `### Progress: ${completedCount}/${totalSteps} steps (${progressPct}%)\n\n`;
+
+  // Step-by-step visualization
+  for (const step of P2P_STEPS) {
+    const completed = completedKeys.has(step.key);
+    const isCurrent = step.key === currentStep;
+    const isHumanStep = ["vendor_confirmation", "approval_wait", "grn_entry"].includes(step.key);
+    const stepData = actionsCompleted.find((a: any) => normalizeStepKey(a.step) === step.key);
+
+    let statusIcon: string;
+    let stepSuffix = "";
+
+    if (completed) {
+      const stepStatus = String(stepData?.status || "completed").toLowerCase();
+      if (stepStatus.includes("fail") || stepStatus.includes("reject")) {
+        statusIcon = "❌";
+      } else if (stepStatus.includes("skip")) {
+        statusIcon = "⏭️";
+      } else {
+        statusIcon = "✅";
+      }
+      if (stepData?.summary) {
+        stepSuffix = ` — ${stepData.summary}`;
+      }
+    } else if (isCurrent) {
+      statusIcon = "⏳";
+      stepSuffix = " ← **Current**";
+    } else if (isHumanStep && !completed) {
+      statusIcon = "🔲";
+      stepSuffix = " *(human input needed)*";
+    } else {
+      statusIcon = "🔲";
+    }
+
+    md += `${statusIcon} ${step.icon} **${step.label}**${stepSuffix}\n`;
+  }
+
+  md += "\n";
+
+  // Human action required
+  if (humanAction) {
+    md += `### ✋ Action Required\n\n`;
+    const actionType = String(humanAction.type || "").replace(/_/g, " ");
+    md += `**Type:** ${toTitle(actionType)}\n\n`;
+    if (humanAction.message) {
+      md += `${humanAction.message}\n\n`;
+    }
+    if (Array.isArray(humanAction.options) && humanAction.options.length > 0) {
+      md += `**Options:**\n`;
+      humanAction.options.forEach((opt: string) => {
+        md += `- ${opt}\n`;
+      });
+      md += "\n";
+    }
+  }
+
+  // Vendor options (when awaiting vendor confirmation)
+  if (status.includes("vendor") && Array.isArray(p.top_vendor_options) && p.top_vendor_options.length > 0) {
+    md += `### 📦 Recommended Vendors\n\n`;
+    md += mdTable(
+      ["Vendor", "Score", "Reason"],
+      p.top_vendor_options.slice(0, 5).map((v: any) => [
+        sanitizeCell(v.vendor_name || "Unknown"),
+        `${Number(v.total_score ?? v.score ?? 0).toFixed(1)}/100`,
+        sanitizeCell(v.recommendation_reason || v.reason || "-"),
+      ])
+    );
+    md += "\n";
+  }
+
+  // Suggested next actions
+  if (suggestions.length > 0) {
+    md += `### 💡 What You Can Do Next\n\n`;
+    suggestions.forEach((s: string) => { md += `- ${s}\n`; });
+    md += "\n";
+  }
+
+  // Completed step details (collapsible style)
+  if (actionsCompleted.length > 0) {
+    md += `### 📊 Completed Step Details\n\n`;
+    for (const action of actionsCompleted) {
+      const stepDef = P2P_STEPS.find(s => s.key === action.step);
+      const label = stepDef ? `${stepDef.icon} ${stepDef.label}` : toTitle(action.step || "");
+      const stepStatus = String(action.status || "completed").toUpperCase();
+      md += `**${label}** — ${stepStatus}`;
+      if (action.agent) md += ` *(${action.agent})*`;
+      md += "\n";
+      if (action.summary) md += `> ${action.summary}\n`;
+      md += "\n";
+    }
+  }
+
+  return md;
+}
+
 // ─── Master dispatcher ──────────────────────────────────────────────────
 
 import {
@@ -693,12 +888,52 @@ import {
   isOdooPoResult,
   isPrWorkflow,
   isMultiIntent,
+  isP2PWorkflow,
 } from "./agentResultExtractor";
 
 /**
  * Given a NormalisedResult, pick the right formatter and return markdown.
  */
+export function isComplianceResult(r: NormalisedResult): boolean {
+  const a = r.agent.toLowerCase();
+  const p = r.payload;
+  return (
+    a.includes("compliance") &&
+    (p.compliance_score !== undefined || p.violations !== undefined ||
+     p.compliance_level !== undefined || p.checks !== undefined)
+  );
+}
+
+function formatComplianceResult(r: NormalisedResult): string {
+  const p = r.payload;
+  const score = p.compliance_score ?? p.score ?? "N/A";
+  const level = p.compliance_level ?? p.status ?? "Unknown";
+  const dept = p.department || "General";
+
+  let md = `## ✅ Compliance Check — ${dept}\n\n`;
+  md += `**Score:** ${score}${typeof score === "number" ? "%" : ""} | **Level:** ${String(level).toUpperCase()}\n\n`;
+
+  if (Array.isArray(p.violations) && p.violations.length > 0) {
+    md += `### 🚨 Violations\n`;
+    p.violations.forEach((v: any) => { md += `- ${typeof v === "string" ? v : v.message || JSON.stringify(v)}\n`; });
+    md += "\n";
+  }
+  if (Array.isArray(p.warnings) && p.warnings.length > 0) {
+    md += `### ⚠️ Warnings\n`;
+    p.warnings.forEach((w: any) => { md += `- ${typeof w === "string" ? w : w.message || JSON.stringify(w)}\n`; });
+    md += "\n";
+  }
+  if (Array.isArray(p.checks)) {
+    md += `### Checks\n`;
+    md += mdTable(["Check", "Status", "Details"],
+      p.checks.map((c: any) => [c.name || "—", c.passed ? "✅ Pass" : "❌ Fail", c.detail || ""]));
+  }
+  if (p.reasoning) md += `\n**Reasoning:** ${p.reasoning}\n`;
+  return md;
+}
+
 export function formatAgentMarkdown(r: NormalisedResult): string {
+  if (isP2PWorkflow(r)) return formatP2PResult(r);
   if (isMultiIntent(r)) return formatMultiIntentResult(r);
   if (isPrWorkflow(r)) return formatPrWorkflowResult(r);
   if (isOdooPoResult(r)) return formatOdooPoResult(r);
@@ -706,6 +941,7 @@ export function formatAgentMarkdown(r: NormalisedResult): string {
   if (isVendorResult(r)) return formatVendorResult(r);
   if (isRiskResult(r)) return formatRiskResult(r);
   if (isApprovalResult(r)) return formatApprovalResult(r);
+  if (isComplianceResult(r)) return formatComplianceResult(r);
   return formatGenericResult(r);
 }
 
@@ -724,6 +960,106 @@ export function buildResultCardProps(r: NormalisedResult): {
   approvalChain?: Array<{ level: number; approver: string; email: string; status: string }>;
 } {
   const p = r.payload;
+
+  // P2P Full workflow: build findings from actions_completed
+  if (isP2PWorkflow(r)) {
+    const actions: any[] = Array.isArray(p.actions_completed) ? p.actions_completed : [];
+    const findings: Array<{ severity: "error" | "warning" | "success" | "info"; message: string }> = [];
+    for (const action of actions) {
+      const stepStatus = String(action.status || "").toLowerCase();
+      const sev: "error" | "warning" | "success" | "info" =
+        stepStatus.includes("fail") || stepStatus.includes("reject") ? "error" :
+        stepStatus.includes("skip") ? "warning" : "success";
+      findings.push({
+        severity: sev,
+        message: `${toTitle(String(action.step || "").replace(/_/g, " "))}: ${action.summary || action.status || "Done"}`,
+      });
+    }
+    if (p.human_action_required) {
+      findings.push({
+        severity: "warning",
+        message: `Action required: ${p.human_action_required.message || toTitle(String(p.human_action_required.type || "").replace(/_/g, " "))}`,
+      });
+    }
+    const totalSteps = 15;
+    const completedCount = actions.length;
+    const verdict = p.status === "completed"
+      ? "P2P COMPLETE"
+      : `${completedCount}/${totalSteps} STEPS COMPLETE`;
+
+    return {
+      agent: "P2POrchestrator",
+      confidence: 0.95,
+      executionTimeMs: r.executionTimeMs ?? 0,
+      verdict,
+      dataSource: "Agentic",
+      queryType: "P2P_FULL",
+      score: { total: Math.round((completedCount / totalSteps) * 100), subscores: {} },
+      findings,
+      approvalChain: undefined,
+    };
+  }
+
+  // PR Workflow: dedicated handler for purchase request creation results
+  if (isPrWorkflow(r)) {
+    const p = r.payload;
+    const status = String(p.status || "").toLowerCase();
+    const verdictMap: Record<string, string> = {
+      success: "PR CREATED",
+      success_no_workflow: "PR CREATED",
+      awaiting_vendor_confirmation: "VENDOR SELECTION REQUIRED",
+      failed: "PR VALIDATION FAILED",
+      needs_clarification: "CLARIFICATION NEEDED",
+      in_progress: "IN PROGRESS",
+    };
+
+    const findings: Array<{severity: "error"|"warning"|"success"|"info"; message: string}> = [];
+
+    // Extract from validations
+    const validations = p.validations || {};
+    const compliance = validations.compliance?.result || {};
+    if (Array.isArray(compliance.violations)) {
+      compliance.violations.forEach((v: string) => findings.push({severity: "error", message: v}));
+    }
+    if (Array.isArray(compliance.warnings)) {
+      compliance.warnings.forEach((w: string) => findings.push({severity: "warning", message: w}));
+    }
+    if (Array.isArray(p.warnings)) {
+      p.warnings.forEach((w: string) => {
+        if (!findings.some(f => f.message === w)) findings.push({severity: "warning", message: w});
+      });
+    }
+
+    // Status-specific findings
+    if (status === "success" || status === "success_no_workflow") {
+      findings.push({severity: "success", message: `PR ${p.pr_object?.pr_number || ''} created and submitted for approval`});
+    }
+    if (status === "awaiting_vendor_confirmation") {
+      const vendorCount = Array.isArray(p.top_vendor_options) ? p.top_vendor_options.length : 0;
+      findings.push({severity: "info", message: `${vendorCount} vendors shortlisted — select one to continue`});
+    }
+    if (p.vendor_selection_note) {
+      findings.push({severity: "info", message: p.vendor_selection_note});
+    }
+
+    // Budget info
+    const budgetResult = validations.budget?.result || {};
+    if (budgetResult.budget_verified) {
+      findings.push({severity: "success", message: `Budget verified: $${Number(budgetResult.available_budget || 0).toLocaleString()} available`});
+    }
+
+    return {
+      agent: r.agent,
+      confidence: r.decision?.confidence ?? 0.95,
+      executionTimeMs: r.executionTimeMs ?? 0,
+      verdict: verdictMap[status] || status.toUpperCase().replace(/_/g, " "),
+      dataSource: r.dataSource,
+      queryType: "CREATE",
+      score: undefined,
+      findings,
+      approvalChain: undefined,
+    };
+  }
 
   // Multi-intent: build findings from children instead of outer envelope
   if (isMultiIntent(r) && r.multiResults?.length) {

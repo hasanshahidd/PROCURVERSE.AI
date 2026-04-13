@@ -21,9 +21,11 @@ import psycopg2
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 log = logging.getLogger(__name__)
 
+from dotenv import load_dotenv
+load_dotenv()
 DB = os.environ.get(
     'DATABASE_URL',
-    'postgresql://postgres:YourStr0ng!Pass@localhost:5433/odoo_procurement_demo'
+    'postgresql://postgres:postgres@localhost:5433/odoo_procurement_demo'
 )
 
 

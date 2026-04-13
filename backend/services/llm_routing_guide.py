@@ -73,6 +73,57 @@ MODULE_GUIDE: Dict[str, Dict[str, str]] = {
         "signals": "create PO, issue purchase order",
         "query_type": "PO_CREATE",
     },
+    # Phase 3-7: New agentic modules
+    "rfq_management": {
+        "when": "User wants to create RFQ, invite vendors for quotes, compare vendor bids, or award contract.",
+        "signals": "create RFQ, invite vendors, compare quotes, request for quotation, vendor bids, award contract",
+        "query_type": "RFQ",
+    },
+    "po_amendment": {
+        "when": "User wants to modify, amend, or change an existing purchase order (quantity, price, date).",
+        "signals": "amend PO, modify order, change PO quantity, update delivery date, PO amendment",
+        "query_type": "AMENDMENT",
+    },
+    "return_processing": {
+        "when": "User wants to return goods to vendor, initiate RTV, or reject damaged delivery.",
+        "signals": "return goods, send back, damaged items, reject delivery, RTV, return to vendor",
+        "query_type": "RETURN",
+    },
+    "quality_inspection": {
+        "when": "User wants to inspect received goods, run quality check, or review QC results.",
+        "signals": "inspect goods, quality check, QC inspection, check quality, run QC",
+        "query_type": "QUALITY",
+    },
+    "reconciliation": {
+        "when": "User wants to reconcile payments, match bank statements, or find payment exceptions.",
+        "signals": "reconcile payments, match bank statement, payment matching, unmatched payments",
+        "query_type": "RECONCILIATION",
+    },
+    "vendor_onboarding": {
+        "when": "User wants to onboard, register, or verify a new vendor/supplier.",
+        "signals": "onboard vendor, register supplier, new vendor, verify vendor, supplier compliance check",
+        "query_type": "ONBOARD",
+    },
+    "delivery_tracking": {
+        "when": "User wants to track delivery status, check shipment, or find delayed orders.",
+        "signals": "track delivery, shipment status, delayed orders, where is my order, delivery ETA",
+        "query_type": "DELIVERY",
+    },
+    "exception_resolution": {
+        "when": "User wants to resolve invoice exceptions, fix mismatches, or handle discrepancies.",
+        "signals": "resolve exception, fix mismatch, invoice discrepancy, blocked invoice, unresolved variance",
+        "query_type": "DISCREPANCY",
+    },
+    "payment_readiness": {
+        "when": "User wants to check if an invoice or payment is ready for processing.",
+        "signals": "payment ready, can we pay, payment check, pre-payment check, invoice ready for payment",
+        "query_type": "PAYMENT_READY",
+    },
+    "p2p_full": {
+        "when": "User wants to run the FULL procure-to-pay cycle end-to-end with a single command.",
+        "signals": "procure X for Y, end-to-end procurement, full P2P, buy and pay, procure to pay, full cycle",
+        "query_type": "P2P_FULL",
+    },
 }
 
 
@@ -124,11 +175,19 @@ def build_classifier_instructions() -> str:
         "  BUDGET + RISK + APPROVAL (NOT 3 × CREATE).\n"
         "- Only use CREATE when the user's primary goal is to actually create/submit a PR.\n"
         "\n"
-        "CRITICAL — ROUTE vs CREATE:\n"
+        "CRITICAL — ROUTE vs CREATE vs P2P_FULL:\n"
         "- 'Route' / 'Route approval for' / 'Route this PR' → APPROVAL (just routing, not creating).\n"
-        "- 'Create' / 'Submit' / 'Raise a new PR' → CREATE (full creation pipeline).\n"
+        "- 'Create' / 'Submit' / 'Raise a new PR' → CREATE (full creation pipeline: compliance + budget + vendor + PR creation).\n"
+        "- 'Buy X for Y' / 'Procure X' / 'Purchase X' / 'I need X' → CREATE (same as 'create PR').\n"
+        "  CREATE runs: compliance → budget check → vendor selection → PR creation. Stops there.\n"
+        "  The user then tracks the PR, approves it, receives goods, matches invoices, etc. as SEPARATE steps.\n"
+        "  Example: 'Procure 50 monitors for IT at $200 each' → CREATE\n"
+        "  Example: 'Buy 100 chairs for Operations, budget $15000' → CREATE\n"
+        "  Example: 'I need 20 servers for IT at $3000 each' → CREATE\n"
         "- 'Route a new purchase request' → APPROVAL (the word 'route' dominates over 'purchase request').\n"
         "- 'Route PR-2026-XXXX' → APPROVAL (routing an existing PR).\n"
+        "- 'Run full P2P' / 'End-to-end procurement pipeline' / 'Run full procure to pay' → P2P_FULL.\n"
+        "  P2P_FULL is ONLY for explicit 'run the full pipeline' requests. Normal purchase requests use CREATE.\n"
         "\n"
         "FILTERS EXTRACTION GUIDE:\n"
         "- ALWAYS extract amount/budget from phrases like '20k', '$50k', '100,000'\n"
@@ -157,6 +216,16 @@ def build_classifier_instructions() -> str:
         "- 'Submit a PR for Operations, $25000 office furniture' -> {intents:[{data_source:'agentic', query_type:'CREATE', filters:{department:'Operations',amount:25000,category:'Furniture'}}]}\n"
         "- 'Route a new purchase request for Finance department, $120000 CAPEX' -> {intents:[{data_source:'agentic', query_type:'APPROVAL', filters:{department:'Finance',amount:120000,budget_category:'CAPEX'}}]}\n"
         "- 'Route PR-2026-0700 for Operations, $45000' -> {intents:[{data_source:'agentic', query_type:'APPROVAL', filters:{pr_number:'PR-2026-0700',department:'Operations',amount:45000}}]}\n"
-        "- 'IT needs $42 for supplies and Finance needs $38 for electronics - check budget, risk, and recommend vendor for both' -> {intents:[{data_source:'agentic', query_type:'BUDGET', filters:{department:'IT',amount:42,category:'Office Supplies'}}, {data_source:'agentic', query_type:'RISK', filters:{department:'IT',amount:42,category:'Office Supplies'}}, {data_source:'agentic', query_type:'VENDOR', filters:{department:'IT',amount:42,category:'Office Supplies'}}, {data_source:'agentic', query_type:'BUDGET', filters:{department:'Finance',amount:38,category:'Electronics'}}, {data_source:'agentic', query_type:'RISK', filters:{department:'Finance',amount:38,category:'Electronics'}}, {data_source:'agentic', query_type:'VENDOR', filters:{department:'Finance',amount:38,category:'Electronics'}}]}\n\n"
+        "- 'IT needs $42 for supplies and Finance needs $38 for electronics - check budget, risk, and recommend vendor for both' -> {intents:[{data_source:'agentic', query_type:'BUDGET', filters:{department:'IT',amount:42,category:'Office Supplies'}}, {data_source:'agentic', query_type:'RISK', filters:{department:'IT',amount:42,category:'Office Supplies'}}, {data_source:'agentic', query_type:'VENDOR', filters:{department:'IT',amount:42,category:'Office Supplies'}}, {data_source:'agentic', query_type:'BUDGET', filters:{department:'Finance',amount:38,category:'Electronics'}}, {data_source:'agentic', query_type:'RISK', filters:{department:'Finance',amount:38,category:'Electronics'}}, {data_source:'agentic', query_type:'VENDOR', filters:{department:'Finance',amount:38,category:'Electronics'}}]}\n"
+        "- 'Procure 50 monitors for IT at $200 each' -> {intents:[{data_source:'agentic', query_type:'CREATE', filters:{department:'IT',amount:10000,category:'Electronics',product_name:'monitors',quantity:50}}]}\n"
+        "- 'Buy 100 office chairs for Operations, budget $15000' -> {intents:[{data_source:'agentic', query_type:'CREATE', filters:{department:'Operations',amount:15000,category:'Furniture',product_name:'office chairs',quantity:100}}]}\n"
+        "- 'I need 20 servers for IT at $3000 each' -> {intents:[{data_source:'agentic', query_type:'CREATE', filters:{department:'IT',amount:60000,category:'IT Hardware',product_name:'servers',quantity:20}}]}\n"
+        "- 'Run full procure to pay for $75k IT servers' -> {intents:[{data_source:'agentic', query_type:'P2P_FULL', filters:{department:'IT',amount:75000,category:'IT Hardware',product_name:'servers'}}]}\n"
+        "- 'What is the status of PR-2026-0409?' -> {intents:[{data_source:'agentic', query_type:'APPROVAL', filters:{pr_number:'PR-2026-0409'}}]}\n"
+        "- 'Approve PR-2026-0409' -> {intents:[{data_source:'agentic', query_type:'APPROVAL', filters:{pr_number:'PR-2026-0409',action:'approve'}}]}\n"
+        "- 'Track delivery for PO-2026-0100' -> {intents:[{data_source:'agentic', query_type:'DELIVERY', filters:{po_number:'PO-2026-0100'}}]}\n"
+        "- 'We received goods for PO-2026-0100' -> {intents:[{data_source:'agentic', query_type:'GRN', filters:{po_number:'PO-2026-0100'}}]}\n"
+        "- 'Match invoice INV-2026-001 to PO-2026-0100' -> {intents:[{data_source:'agentic', query_type:'INVOICE', filters:{invoice_number:'INV-2026-001',po_number:'PO-2026-0100'}}]}\n"
+        "- 'Process payment for invoice INV-2026-001' -> {intents:[{data_source:'agentic', query_type:'PAYMENT', filters:{invoice_number:'INV-2026-001'}}]}\n\n"
         + build_module_selection_instructions()
     )

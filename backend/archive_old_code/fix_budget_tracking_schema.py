@@ -13,7 +13,7 @@ def fix_schema():
     db_url = os.getenv('DATABASE_URL')
     
     if not db_url:
-        print("❌ DATABASE_URL not found in environment")
+        print("DATABASE_URL not found in environment")
         return False
     
     try:
@@ -21,7 +21,7 @@ def fix_schema():
         conn = psycopg2.connect(db_url)
         cursor = conn.cursor()
         
-        print("\n🔧 Fixing budget_tracking schema...")
+        print("\nFixing budget_tracking schema...")
         print("=" * 60)
         
         # Check if column already exists
@@ -33,13 +33,13 @@ def fix_schema():
         """)
         
         if cursor.fetchone():
-            print("✅ Column 'created_at' already exists - no action needed")
+            print("Column 'created_at' already exists - no action needed")
             cursor.close()
             conn.close()
             return True
         
         # Add the missing column
-        print("\n📝 Adding 'created_at' column to budget_tracking...")
+        print("\nAdding 'created_at' column to budget_tracking...")
         cursor.execute("""
             ALTER TABLE budget_tracking 
             ADD COLUMN created_at TIMESTAMP DEFAULT NOW()
@@ -64,8 +64,8 @@ def fix_schema():
         
         columns = [row[0] for row in cursor.fetchall()]
         
-        print(f"\n✅ Successfully added 'created_at' column")
-        print(f"\n📊 budget_tracking now has {len(columns)} columns:")
+        print(f"\nSuccessfully added 'created_at' column")
+        print(f"\nbudget_tracking now has {len(columns)} columns:")
         for col in columns:
             print(f"   - {col}")
         
@@ -73,13 +73,13 @@ def fix_schema():
         conn.close()
         
         print("\n" + "=" * 60)
-        print("✅ Schema fix completed successfully!")
+        print("Schema fix completed successfully!")
         print("   Run verify_db_schema.py to confirm all tables are correct")
         
         return True
         
     except Exception as e:
-        print(f"\n❌ Error fixing schema: {str(e)}")
+        print(f"\nError fixing schema: {str(e)}")
         import traceback
         print(traceback.format_exc())
         return False

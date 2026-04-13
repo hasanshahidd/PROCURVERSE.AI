@@ -209,7 +209,7 @@ export function AgentProcessMonitor({
                             <div className="space-y-1">
                               {phaseDetails.observing.sources.map((source: string, idx: number) => (
                                 <div key={idx} className="flex items-center gap-2 bg-black/40 rounded px-3 py-2">
-                                  {source.includes('Odoo') && <Database className="h-4 w-4 text-blue-300" />}
+                                  {(source.includes('Odoo') || source.includes('ERP') || source.includes('Adapter')) && <Database className="h-4 w-4 text-blue-300" />}
                                   {source.includes('PostgreSQL') && <Database className="h-4 w-4 text-green-300" />}
                                   {source.includes('Budget') && <Database className="h-4 w-4 text-purple-300" />}
                                   <span className="text-white text-sm font-mono">{source}</span>

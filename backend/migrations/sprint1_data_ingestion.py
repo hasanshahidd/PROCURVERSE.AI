@@ -134,8 +134,8 @@ def upsert_df(conn, df: pd.DataFrame, table: str, conflict_col: str,
     _DATE_FMTS  = ('%d-%b-%Y', '%Y-%m-%d', '%d/%m/%Y', '%m/%d/%Y',
                    '%d-%m-%Y', '%b-%Y', '%Y/%m/%d', '%d %b %Y')
     # Boolean indicator sets — used only in cast_val for schema-boolean columns
-    _BOOL_TRUE  = {'yes', 'true', 'y', 'on', '✓', '1', 'x'}
-    _BOOL_FALSE = {'no', 'false', 'n', 'off', '✗', '0'}
+    _BOOL_TRUE  = {'yes', 'true', 'y', 'on', '', '1', 'x'}
+    _BOOL_FALSE = {'no', 'false', 'n', 'off', '', '0'}
 
     def to_native(v):
         if v is None:
@@ -922,7 +922,7 @@ def run_ingestion(file_filter: str = None, group_filter: str = None):
     else:
         loaders_to_run = ALL_LOADERS_FLAT
 
-    print(f"\n📥  NMI Data Ingestion — {len(loaders_to_run)} files to load\n")
+    print(f"\nNMI Data Ingestion — {len(loaders_to_run)} files to load\n")
     print(f"{'File':<6} {'Table':<35} {'Loaded':>8} {'Skipped':>8}  Status")
     print("─" * 75)
 
@@ -932,19 +932,19 @@ def run_ingestion(file_filter: str = None, group_filter: str = None):
             loaded, skipped = loader_fn(conn)
             total_loaded += loaded
             total_skipped += skipped
-            status = "✓"
+            status = ""
             log_ingestion(cur, f"{file_num}_*.xlsx", table_name,
                           loaded, skipped, "Complete", started_at=started)
             conn.commit()
         except FileNotFoundError as e:
-            status = "⚠  FILE NOT FOUND"
+            status = "FILE NOT FOUND"
             errors.append((file_num, table_name, str(e)))
             loaded, skipped = 0, 0
             log_ingestion(cur, f"{file_num}_*.xlsx", table_name,
                           0, 0, "Failed", str(e), started)
             conn.commit()
         except Exception as e:
-            status = f"✗  {type(e).__name__}"
+            status = f"{type(e).__name__}"
             errors.append((file_num, table_name, str(e)))
             loaded, skipped = 0, 0
             log_ingestion(cur, f"{file_num}_*.xlsx", table_name,
@@ -957,11 +957,11 @@ def run_ingestion(file_filter: str = None, group_filter: str = None):
     print(f"{'TOTAL':<40} {total_loaded:>8} {total_skipped:>8}")
 
     if errors:
-        print(f"\n⚠  {len(errors)} error(s):")
+        print(f"\n{len(errors)} error(s):")
         for file_num, table, msg in errors:
             print(f"   File {file_num} → {table}: {msg[:120]}")
     else:
-        print(f"\n✅  All {len(loaders_to_run)} files loaded successfully.")
+        print(f"\nAll {len(loaders_to_run)} files loaded successfully.")
 
     cur.close()
     conn.close()

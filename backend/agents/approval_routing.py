@@ -99,9 +99,9 @@ class ApprovalRoutingAgent(BaseAgent):
         pr_number = observations.get("pr_number")
         
         # Get approval chain for this department and amount
-        logger.info(f"[ApprovalAgent] 📋 Fetching approval chain: {department} @ ${amount:,.2f}")
+        logger.info(f"[ApprovalAgent] Fetching approval chain: {department} @ ${amount:,.2f}")
         approval_chain = await self._get_approval_chain(department, amount)
-        logger.info(f"[ApprovalAgent] ✅ Chain lookup result: {approval_chain.get('success')} - {len(approval_chain.get('approvers', []))} levels")
+        logger.info(f"[ApprovalAgent] Chain lookup result: {approval_chain.get('success')} - {len(approval_chain.get('approvers', []))} levels")
         
         if not approval_chain["success"]:
             # No approval chain configured - escalate to human
@@ -320,7 +320,17 @@ class ApprovalRoutingAgent(BaseAgent):
                         send_approval_request_email,
                         approver_email,
                         approver_name,
-                        input_data,
+                        {
+                            "pr_number": pr_number,
+                            "description": context.get("raw_pr_data", {}).get("description", ""),
+                            "budget": amount,
+                            "department": department,
+                            "requester": context.get("requester", ""),
+                            "priority": context.get("raw_pr_data", {}).get(
+                                "urgency",
+                                context.get("raw_pr_data", {}).get("priority_level", "medium")
+                            ),
+                        },
                     ))
             except Exception as e:
                 logger.warning(f"Email notification failed (non-fatal): {e}")
@@ -376,6 +386,9 @@ class ApprovalRoutingAgent(BaseAgent):
                 "captured_at":          datetime.now().isoformat(),
                 "approval_action":      decision.action,
                 "confidence":           decision.confidence,
+                "context": {
+                    "raw_pr_data": raw_pr_data,
+                },
             }
 
             # ── Create workflow header ────────────────────────────────────────
@@ -459,8 +472,9 @@ class ApprovalRoutingAgent(BaseAgent):
                     "error": "get_approval_chain tool not found"
                 }
             
-            # Call the tool
-            result_json = tool.func(department=department, amount=amount)
+            # Call the tool in a thread to avoid blocking the asyncio event loop
+            import asyncio
+            result_json = await asyncio.to_thread(tool.func, department=department, amount=amount)
             result = json.loads(result_json)
             
             return result

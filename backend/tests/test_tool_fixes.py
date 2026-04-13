@@ -46,7 +46,7 @@ async def test_price_analysis_tool_calls():
     }
     
     try:
-        print(f"\n📊 Testing with: {pr_data['product_name']} @ ${pr_data['quoted_price']}")
+        print(f"\nTesting with: {pr_data['product_name']} @ ${pr_data['quoted_price']}")
         print(f"   Vendor: {pr_data['vendor_name']}, Qty: {pr_data['quantity']}")
         
         # Execute agent with combined input data
@@ -79,9 +79,9 @@ async def test_price_analysis_tool_calls():
     except Exception as e:
         error_msg = str(e)
         if "unexpected keyword argument" in error_msg.lower():
-            print(f"\n❌ TOOL PARAMETER ERROR: {e}")
+            print(f"\nTOOL PARAMETER ERROR: {e}")
             return False
-        print(f"\n⚠️ Execution error (not tool-related): {e}")
+        print(f"\n️ Execution error (not tool-related): {e}")
         return False
 
 
@@ -113,7 +113,7 @@ async def test_compliance_check_tool_calls():
     }
     
     try:
-        print(f"\n📋 Testing with: {pr_data['department']} dept, ${pr_data['amount']:,.2f}")
+        print(f"\nTesting with: {pr_data['department']} dept, ${pr_data['amount']:,.2f}")
         print(f"   Vendor: {pr_data['vendor_name']}, Category: {pr_data['budget_category']}")
         
         # Execute agent with combined input data
@@ -149,9 +149,9 @@ async def test_compliance_check_tool_calls():
     except Exception as e:
         error_msg = str(e)
         if "unexpected keyword argument" in error_msg.lower():
-            print(f"\n❌ TOOL PARAMETER ERROR: {e}")
+            print(f"\nTOOL PARAMETER ERROR: {e}")
             return False
-        print(f"\n⚠️ Execution error (not tool-related): {e}")
+        print(f"\n️ Execution error (not tool-related): {e}")
         return False
 
 

@@ -7,12 +7,15 @@ Each module: 10 items / 20 po_lines / 8 grn_headers / 12 spend rows × 6 ERPs
 """
 
 import os, sys
-os.chdir("E:/procure AI/Procure-AI")
+from pathlib import Path
+os.chdir(str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, ".")
 
 import psycopg2
 from psycopg2.extras import execute_values
-conn = psycopg2.connect("postgresql://postgres:YourStr0ng!Pass@localhost:5433/odoo_procurement_demo")
+from dotenv import load_dotenv
+load_dotenv()
+conn = psycopg2.connect(os.environ.get("DATABASE_URL", "postgresql://postgres:postgres@localhost:5433/odoo_procurement_demo"))
 cur  = conn.cursor()
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -138,7 +141,7 @@ execute_values(cur, """
      it[10], True, True, f"Purchase description for {it[6]}")
     for it in ITEMS
 ])
-print("  ✓ items_odoo (10 rows)")
+print("  items_odoo (10 rows)")
 
 # ── items_sap_s4 ──────────────────────────────────────────────────────────────
 cur.execute("DELETE FROM items_sap_s4")
@@ -151,7 +154,7 @@ execute_values(cur, """
      it[10], 1, 'USD', it[11], it[13], it[14], it[12], 'Z1')
     for it in ITEMS
 ])
-print("  ✓ items_sap_s4 (10 rows)")
+print("  items_sap_s4 (10 rows)")
 
 # ── items_sap_b1 ──────────────────────────────────────────────────────────────
 cur.execute("DELETE FROM items_sap_b1")
@@ -166,7 +169,7 @@ execute_values(cur, """
      it[11], 'Y', 'Y', 'Y', 'N')
     for it in ITEMS
 ])
-print("  ✓ items_sap_b1 (10 rows)")
+print("  items_sap_b1 (10 rows)")
 
 # ── items_dynamics ────────────────────────────────────────────────────────────
 cur.execute("DELETE FROM items_dynamics")
@@ -183,7 +186,7 @@ execute_values(cur, """
      it[11], it[12], 'No')
     for it in ITEMS
 ])
-print("  ✓ items_dynamics (10 rows)")
+print("  items_dynamics (10 rows)")
 
 # ── items_oracle ──────────────────────────────────────────────────────────────
 cur.execute("DELETE FROM items_oracle")
@@ -198,7 +201,7 @@ execute_values(cur, """
      it[14], it[11], it[12], 'Ahmed Khan', 'Y')
     for it in ITEMS
 ])
-print("  ✓ items_oracle (10 rows)")
+print("  items_oracle (10 rows)")
 
 # ── items_erpnext ─────────────────────────────────────────────────────────────
 cur.execute("DELETE FROM items_erpnext")
@@ -215,7 +218,7 @@ execute_values(cur, """
      it[11], it[14], it[13], it[12])
     for it in ITEMS
 ])
-print("  ✓ items_erpnext (10 rows)")
+print("  items_erpnext (10 rows)")
 
 conn.commit()
 print()
@@ -234,7 +237,7 @@ execute_values(cur, """
      '2025-02-15', qty if pi < 6 else 0, qty if pi < 4 else 0)
     for pi, ii, qty, price in PO_LINES_MAP
 ])
-print("  ✓ po_lines_odoo (20 rows)")
+print("  po_lines_odoo (20 rows)")
 
 # ── po_lines_sap_s4 ───────────────────────────────────────────────────────────
 cur.execute("DELETE FROM po_lines_sap_s4")
@@ -249,7 +252,7 @@ execute_values(cur, """
      'V0', '2025-02-15', qty if pi < 6 else 0, qty if pi < 4 else 0)
     for idx, (pi, ii, qty, price) in enumerate(PO_LINES_MAP)
 ])
-print("  ✓ po_lines_sap_s4 (20 rows)")
+print("  po_lines_sap_s4 (20 rows)")
 
 # ── po_lines_sap_b1 ───────────────────────────────────────────────────────────
 cur.execute("DELETE FROM po_lines_sap_b1")
@@ -266,7 +269,7 @@ execute_values(cur, """
      0 if pi < 6 else qty, 'C' if pi < 4 else 'O')
     for idx, (pi, ii, qty, price) in enumerate(PO_LINES_MAP)
 ])
-print("  ✓ po_lines_sap_b1 (20 rows)")
+print("  po_lines_sap_b1 (20 rows)")
 
 # ── po_lines_dynamics ─────────────────────────────────────────────────────────
 cur.execute("DELETE FROM po_lines_dynamics")
@@ -283,7 +286,7 @@ execute_values(cur, """
      qty if pi < 6 else 0, qty if pi < 4 else 0)
     for idx, (pi, ii, qty, price) in enumerate(PO_LINES_MAP)
 ])
-print("  ✓ po_lines_dynamics (20 rows)")
+print("  po_lines_dynamics (20 rows)")
 
 # ── po_lines_oracle ───────────────────────────────────────────────────────────
 cur.execute("DELETE FROM po_lines_oracle")
@@ -301,7 +304,7 @@ execute_values(cur, """
      'CLOSED' if pi < 4 else 'OPEN')
     for idx, (pi, ii, qty, price) in enumerate(PO_LINES_MAP)
 ])
-print("  ✓ po_lines_oracle (20 rows)")
+print("  po_lines_oracle (20 rows)")
 
 # ── po_lines_erpnext ──────────────────────────────────────────────────────────
 cur.execute("DELETE FROM po_lines_erpnext")
@@ -319,7 +322,7 @@ execute_values(cur, """
      'Stores - Company', '2025-02-15')
     for idx, (pi, ii, qty, price) in enumerate(PO_LINES_MAP)
 ])
-print("  ✓ po_lines_erpnext (20 rows)")
+print("  po_lines_erpnext (20 rows)")
 
 conn.commit()
 print()
@@ -345,7 +348,7 @@ execute_values(cur, """
      f'GRN for {PO_ODOO[pi]}')
     for i, (pi, gdate, vi) in enumerate(GRN_DATA)
 ])
-print("  ✓ grn_headers_odoo (8 rows)")
+print("  grn_headers_odoo (8 rows)")
 
 # ── grn_headers_sap_s4 ────────────────────────────────────────────────────────
 cur.execute("DELETE FROM grn_headers_sap_s4")
@@ -360,7 +363,7 @@ execute_values(cur, """
      PO_SAP_S4[pi], '1000', '0001', '101', 'PROCSVC')
     for i, (pi, gdate, vi) in enumerate(GRN_DATA)
 ])
-print("  ✓ grn_headers_sap_s4 (8 rows)")
+print("  grn_headers_sap_s4 (8 rows)")
 
 # ── grn_headers_sap_b1 ────────────────────────────────────────────────────────
 cur.execute("DELETE FROM grn_headers_sap_b1")
@@ -377,7 +380,7 @@ execute_values(cur, """
      'USD', f'GR for PO {PO_SAP_B1[pi]}', 'C', 'Y')
     for i, (pi, gdate, vi) in enumerate(GRN_DATA)
 ])
-print("  ✓ grn_headers_sap_b1 (8 rows)")
+print("  grn_headers_sap_b1 (8 rows)")
 
 # ── grn_headers_dynamics ──────────────────────────────────────────────────────
 cur.execute("DELETE FROM grn_headers_dynamics")
@@ -394,7 +397,7 @@ execute_values(cur, """
      f'Product receipt for {PO_DYNAMICS[pi]}')
     for i, (pi, gdate, vi) in enumerate(GRN_DATA)
 ])
-print("  ✓ grn_headers_dynamics (8 rows)")
+print("  grn_headers_dynamics (8 rows)")
 
 # ── grn_headers_oracle ────────────────────────────────────────────────────────
 cur.execute("DELETE FROM grn_headers_oracle")
@@ -410,7 +413,7 @@ execute_values(cur, """
      f'AWB-{str(i+1).zfill(8)}', 'M1', 'CLOSED', 'RECEIVE')
     for i, (pi, gdate, vi) in enumerate(GRN_DATA)
 ])
-print("  ✓ grn_headers_oracle (8 rows)")
+print("  grn_headers_oracle (8 rows)")
 
 # ── grn_headers_erpnext ───────────────────────────────────────────────────────
 cur.execute("DELETE FROM grn_headers_erpnext")
@@ -427,7 +430,7 @@ execute_values(cur, """
      'Procure-AI Demo Company', f'GRN for {PO_ERPNEXT[pi]}')
     for i, (pi, gdate, vi) in enumerate(GRN_DATA)
 ])
-print("  ✓ grn_headers_erpnext (8 rows)")
+print("  grn_headers_erpnext (8 rows)")
 
 conn.commit()
 print()
@@ -448,7 +451,7 @@ execute_values(cur, """
      cc, cat, 'purchase', 1)
     for i, (mo, cc, cat, amount, vi) in enumerate(SPEND_DATA)
 ])
-print("  ✓ spend_odoo (12 rows)")
+print("  spend_odoo (12 rows)")
 
 # ── spend_sap_s4 ──────────────────────────────────────────────────────────────
 cur.execute("DELETE FROM spend_sap_s4")
@@ -463,7 +466,7 @@ execute_values(cur, """
      cc.replace('CC-','KOST'), '400000', cat[:9], f'MAT-1000{i+1}', 'NB')
     for i, (mo, cc, cat, amount, vi) in enumerate(SPEND_DATA)
 ])
-print("  ✓ spend_sap_s4 (12 rows)")
+print("  spend_sap_s4 (12 rows)")
 
 # ── spend_sap_b1 ──────────────────────────────────────────────────────────────
 cur.execute("DELETE FROM spend_sap_b1")
@@ -478,7 +481,7 @@ execute_values(cur, """
      cc, 'MAIN', SAP_B1_GROUP.get(cat, 100), 'C')
     for i, (mo, cc, cat, amount, vi) in enumerate(SPEND_DATA)
 ])
-print("  ✓ spend_sap_b1 (12 rows)")
+print("  spend_sap_b1 (12 rows)")
 
 # ── spend_dynamics ────────────────────────────────────────────────────────────
 cur.execute("DELETE FROM spend_dynamics")
@@ -494,7 +497,7 @@ execute_values(cur, """
      cc, 'BU-CORP', 'USMF', cat[:10], 'Invoiced')
     for i, (mo, cc, cat, amount, vi) in enumerate(SPEND_DATA)
 ])
-print("  ✓ spend_dynamics (12 rows)")
+print("  spend_dynamics (12 rows)")
 
 # ── spend_oracle ──────────────────────────────────────────────────────────────
 cur.execute("DELETE FROM spend_oracle")
@@ -509,7 +512,7 @@ execute_values(cur, """
      'US-OPERATIONS', cc, 'CLOSED')
     for i, (mo, cc, cat, amount, vi) in enumerate(SPEND_DATA)
 ])
-print("  ✓ spend_oracle (12 rows)")
+print("  spend_oracle (12 rows)")
 
 # ── spend_erpnext ─────────────────────────────────────────────────────────────
 cur.execute("DELETE FROM spend_erpnext")
@@ -525,7 +528,7 @@ execute_values(cur, """
      cc, 'Main Project', 'Procure-AI Demo Company', 'Submitted')
     for i, (mo, cc, cat, amount, vi) in enumerate(SPEND_DATA)
 ])
-print("  ✓ spend_erpnext (12 rows)")
+print("  spend_erpnext (12 rows)")
 
 conn.commit()
 

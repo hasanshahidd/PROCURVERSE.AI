@@ -27,7 +27,7 @@ def verify_class_structure():
     agent = SupplierPerformanceAgent()
     
     # Check base attributes
-    print("\n✓ Checking base attributes...")
+    print("\nChecking base attributes...")
     assert hasattr(agent, 'name'), "Missing 'name' attribute"
     assert agent.name == "SupplierPerformanceAgent", f"Wrong name: {agent.name}"
     print(f"  - Agent name: {agent.name}")
@@ -40,10 +40,10 @@ def verify_class_structure():
     
     for method_name in required_methods:
         assert hasattr(agent, method_name), f"Missing method: {method_name}"
-        print(f"  - {method_name}: ✓")
+        print(f"  - {method_name}: ")
     
     # Check performance levels
-    print("\n✓ Checking performance level definitions...")
+    print("\nChecking performance level definitions...")
     levels = {
         'excellent': (90, 100),
         'good': (75, 89),
@@ -55,7 +55,7 @@ def verify_class_structure():
     for level, (min_score, max_score) in levels.items():
         print(f"  - {level.upper()}: {min_score}-{max_score} points")
     
-    print("\n✅ ALL STRUCTURE CHECKS PASSED")
+    print("\nALL STRUCTURE CHECKS PASSED")
     print("="*80)
 
 
@@ -68,7 +68,7 @@ def verify_scoring_logic():
     agent = SupplierPerformanceAgent()
     
     # Test delivery scoring
-    print("\n✓ Testing delivery score calculation...")
+    print("\nTesting delivery score calculation...")
     delivery_data = {
         'total_orders': 100,
         'on_time_deliveries': 95,
@@ -81,7 +81,7 @@ def verify_scoring_logic():
     print(f"  - 95% on-time delivery → Score: {delivery_score}/100")
     
     # Test quality scoring
-    print("\n✓ Testing quality score calculation...")
+    print("\nTesting quality score calculation...")
     quality_data = {
         'total_items_received': 1000,
         'defective_items': 10,
@@ -94,7 +94,7 @@ def verify_scoring_logic():
     print(f"  - 1% defect rate → Score: {quality_score}/100")
     
     # Test price scoring
-    print("\n✓ Testing price score calculation...")
+    print("\nTesting price score calculation...")
     price_data = {
         'price_stability_score': 85,
         'competitiveness_score': 80
@@ -104,7 +104,7 @@ def verify_scoring_logic():
     print(f"  - Stability: 85, Competitiveness: 80 → Score: {price_score}/100")
     
     # Test communication scoring
-    print("\n✓ Testing communication score calculation...")
+    print("\nTesting communication score calculation...")
     comm_data = {
         'response_time_hours': 12,
         'issues_resolved': 10,
@@ -115,7 +115,7 @@ def verify_scoring_logic():
     assert 0 <= comm_score <= 100, "Communication score out of range"
     print(f"  - Response: 12hrs, Rating: 4.0 → Score: {comm_score}/100")
     
-    print("\n✅ ALL SCORING LOGIC CHECKS PASSED")
+    print("\nALL SCORING LOGIC CHECKS PASSED")
     print("="*80)
 
 
@@ -135,13 +135,13 @@ def verify_performance_levels():
         (30, 'critical')
     ]
     
-    print("\n✓ Testing performance level mapping...")
+    print("\nTesting performance level mapping...")
     for score, expected_level in test_cases:
         level = agent._get_performance_level(score)
         assert level == expected_level, f"Score {score} should be {expected_level}, got {level}"
-        print(f"  - Score {score}/100 → {level.upper()} ✓")
+        print(f"  - Score {score}/100 → {level.upper()} ")
     
-    print("\n✅ ALL PERFORMANCE LEVEL CHECKS PASSED")
+    print("\nALL PERFORMANCE LEVEL CHECKS PASSED")
     print("="*80)
 
 
@@ -166,26 +166,26 @@ def run_all_verifications():
             verify_func()
             passed += 1
         except AssertionError as e:
-            print(f"\n❌ VERIFICATION FAILED ({name}): {e}")
+            print(f"\nVERIFICATION FAILED ({name}): {e}")
             failed += 1
         except Exception as e:
-            print(f"\n❌ VERIFICATION ERROR ({name}): {e}")
+            print(f"\nVERIFICATION ERROR ({name}): {e}")
             failed += 1
     
     print("\n" + "="*80)
     print("VERIFICATION SUMMARY")
     print("="*80)
     print(f"Total Verifications: {len(verifications)}")
-    print(f"✅ Passed: {passed}")
-    print(f"❌ Failed: {failed}")
+    print(f"Passed: {passed}")
+    print(f"Failed: {failed}")
     print(f"Success Rate: {(passed/len(verifications)*100):.1f}%")
     
     if failed == 0:
-        print("\n🎉 ALL VERIFICATIONS PASSED!")
+        print("\nALL VERIFICATIONS PASSED!")
         print("SupplierPerformanceAgent structure is correct.")
         print("\nNext step: Run test_supplier_agent.py for full LLM-based tests.")
     else:
-        print(f"\n⚠️ {failed} verification(s) failed.")
+        print(f"\n️ {failed} verification(s) failed.")
     
     print("="*80)
 

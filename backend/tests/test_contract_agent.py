@@ -52,15 +52,15 @@ async def test_expired_contract():
     
     result = await agent.execute(context)
     
-    print(f"\n✓ Agent: {result['agent']}")
-    print(f"✓ Status: {result['status']}")
-    print(f"✓ Action: {result['result']['action']}")
-    print(f"✓ Priority: {result['result']['priority']}")
-    print(f"✓ Alert Level: {result['result']['alert_level']}")
-    print(f"✓ Days Until Expiration: {result['result']['days_until_expiration']}")
-    print(f"✓ Spend: {result['result']['spend_percentage']}%")
-    print(f"\n✓ Reasoning: {result['decision']['reasoning']}")
-    print(f"\n✓ Recommended Actions:")
+    print(f"\nAgent: {result['agent']}")
+    print(f"Status: {result['status']}")
+    print(f"Action: {result['result']['action']}")
+    print(f"Priority: {result['result']['priority']}")
+    print(f"Alert Level: {result['result']['alert_level']}")
+    print(f"Days Until Expiration: {result['result']['days_until_expiration']}")
+    print(f"Spend: {result['result']['spend_percentage']}%")
+    print(f"\nReasoning: {result['decision']['reasoning']}")
+    print(f"\nRecommended Actions:")
     for action in result['result']['recommended_actions']:
         print(f"   - {action}")
     
@@ -69,7 +69,7 @@ async def test_expired_contract():
     assert result['result']['priority'] == 'CRITICAL', "Should be critical priority"
     assert result['result']['alert_level'] == 'CRITICAL', "Should be critical alert"
     
-    print("\n✅ TEST 1 PASSED: Expired contract properly escalated to emergency")
+    print("\nTEST 1 PASSED: Expired contract properly escalated to emergency")
 
 
 async def test_critical_7_days():
@@ -101,19 +101,19 @@ async def test_critical_7_days():
     
     result = await agent.execute(context)
     
-    print(f"\n✓ Agent: {result['agent']}")
-    print(f"✓ Action: {result['result']['action']}")
-    print(f"✓ Priority: {result['result']['priority']}")
-    print(f"✓ Alert Level: {result['result']['alert_level']}")
-    print(f"✓ Days Until Expiration: {result['result']['days_until_expiration']}")
-    print(f"✓ Expiration Status: {result['result']['expiration_status']}")
-    print(f"\n✓ Reasoning: {result['decision']['reasoning']}")
+    print(f"\nAgent: {result['agent']}")
+    print(f"Action: {result['result']['action']}")
+    print(f"Priority: {result['result']['priority']}")
+    print(f"Alert Level: {result['result']['alert_level']}")
+    print(f"Days Until Expiration: {result['result']['days_until_expiration']}")
+    print(f"Expiration Status: {result['result']['expiration_status']}")
+    print(f"\nReasoning: {result['decision']['reasoning']}")
     
     assert result['result']['action'] == 'urgent_renewal', "Should trigger urgent renewal"
     assert result['result']['priority'] == 'HIGH', "Should be high priority"
     assert result['result']['expiration_status'] == 'critical', "Should be critical status"
     
-    print("\n✅ TEST 2 PASSED: Critical expiration triggers urgent renewal")
+    print("\nTEST 2 PASSED: Critical expiration triggers urgent renewal")
 
 
 async def test_urgent_30_days():
@@ -142,16 +142,16 @@ async def test_urgent_30_days():
     
     result = await agent.execute(context)
     
-    print(f"\n✓ Action: {result['result']['action']}")
-    print(f"✓ Priority: {result['result']['priority']}")
-    print(f"✓ Days Until Expiration: {result['result']['days_until_expiration']}")
-    print(f"✓ Reasoning: {result['decision']['reasoning']}")
+    print(f"\nAction: {result['result']['action']}")
+    print(f"Priority: {result['result']['priority']}")
+    print(f"Days Until Expiration: {result['result']['days_until_expiration']}")
+    print(f"Reasoning: {result['decision']['reasoning']}")
     
     assert result['result']['action'] == 'expedite_renewal', "Should expedite renewal"
     assert result['result']['priority'] == 'HIGH', "Should be high priority"
     assert result['result']['expiration_status'] == 'urgent', "Should be urgent status"
     
-    print("\n✅ TEST 3 PASSED: Urgent expiration triggers expedited renewal")
+    print("\nTEST 3 PASSED: Urgent expiration triggers expedited renewal")
 
 
 async def test_action_required_60_days_auto_renew():
@@ -181,16 +181,16 @@ async def test_action_required_60_days_auto_renew():
     
     result = await agent.execute(context)
     
-    print(f"\n✓ Action: {result['result']['action']}")
-    print(f"✓ Priority: {result['result']['priority']}")
-    print(f"✓ Days Until Expiration: {result['result']['days_until_expiration']}")
-    print(f"✓ Auto-Renew: Yes")
-    print(f"✓ Reasoning: {result['decision']['reasoning']}")
+    print(f"\nAction: {result['result']['action']}")
+    print(f"Priority: {result['result']['priority']}")
+    print(f"Days Until Expiration: {result['result']['days_until_expiration']}")
+    print(f"Auto-Renew: Yes")
+    print(f"Reasoning: {result['decision']['reasoning']}")
     
     assert result['result']['action'] == 'verify_auto_renewal', "Should verify auto-renewal"
     assert 'auto-renewal' in result['decision']['reasoning'].lower(), "Should mention auto-renewal"
     
-    print("\n✅ TEST 4 PASSED: Auto-renewal contract triggers verification")
+    print("\nTEST 4 PASSED: Auto-renewal contract triggers verification")
 
 
 async def test_action_required_60_days_no_auto_renew():
@@ -220,15 +220,15 @@ async def test_action_required_60_days_no_auto_renew():
     
     result = await agent.execute(context)
     
-    print(f"\n✓ Action: {result['result']['action']}")
-    print(f"✓ Priority: {result['result']['priority']}")
-    print(f"✓ Days Until Expiration: {result['result']['days_until_expiration']}")
-    print(f"✓ Reasoning: {result['decision']['reasoning']}")
+    print(f"\nAction: {result['result']['action']}")
+    print(f"Priority: {result['result']['priority']}")
+    print(f"Days Until Expiration: {result['result']['days_until_expiration']}")
+    print(f"Reasoning: {result['decision']['reasoning']}")
     
     assert result['result']['action'] == 'initiate_renewal', "Should initiate renewal process"
     assert result['result']['priority'] == 'MEDIUM', "Should be medium priority"
     
-    print("\n✅ TEST 5 PASSED: 60-day warning initiates renewal process")
+    print("\nTEST 5 PASSED: 60-day warning initiates renewal process")
 
 
 async def test_early_warning_90_days():
@@ -257,17 +257,17 @@ async def test_early_warning_90_days():
     
     result = await agent.execute(context)
     
-    print(f"\n✓ Action: {result['result']['action']}")
-    print(f"✓ Priority: {result['result']['priority']}")
-    print(f"✓ Days Until Expiration: {result['result']['days_until_expiration']}")
-    print(f"✓ Alert Level: {result['result']['alert_level']}")
-    print(f"✓ Reasoning: {result['decision']['reasoning']}")
+    print(f"\nAction: {result['result']['action']}")
+    print(f"Priority: {result['result']['priority']}")
+    print(f"Days Until Expiration: {result['result']['days_until_expiration']}")
+    print(f"Alert Level: {result['result']['alert_level']}")
+    print(f"Reasoning: {result['decision']['reasoning']}")
     
     assert result['result']['action'] == 'plan_renewal', "Should plan renewal"
     assert result['result']['priority'] == 'LOW', "Should be low priority"
     assert result['result']['expiration_status'] == 'early_warning', "Should be early warning"
     
-    print("\n✅ TEST 6 PASSED: Early warning triggers renewal planning")
+    print("\nTEST 6 PASSED: Early warning triggers renewal planning")
 
 
 async def test_active_contract():
@@ -296,17 +296,17 @@ async def test_active_contract():
     
     result = await agent.execute(context)
     
-    print(f"\n✓ Action: {result['result']['action']}")
-    print(f"✓ Priority: {result['result']['priority']}")
-    print(f"✓ Days Until Expiration: {result['result']['days_until_expiration']}")
-    print(f"✓ Spend: {result['result']['spend_percentage']}%")
-    print(f"✓ Reasoning: {result['decision']['reasoning']}")
+    print(f"\nAction: {result['result']['action']}")
+    print(f"Priority: {result['result']['priority']}")
+    print(f"Days Until Expiration: {result['result']['days_until_expiration']}")
+    print(f"Spend: {result['result']['spend_percentage']}%")
+    print(f"Reasoning: {result['decision']['reasoning']}")
     
     assert result['result']['action'] == 'monitor_ongoing', "Should continue monitoring"
     assert result['result']['priority'] == 'LOW', "Should be low priority"
     assert result['result']['expiration_status'] == 'active', "Should be active"
     
-    print("\n✅ TEST 7 PASSED: Active contract continues routine monitoring")
+    print("\nTEST 7 PASSED: Active contract continues routine monitoring")
 
 
 async def test_high_spend_warning():
@@ -335,19 +335,19 @@ async def test_high_spend_warning():
     
     result = await agent.execute(context)
     
-    print(f"\n✓ Action: {result['result']['action']}")
-    print(f"✓ Priority: {result['result']['priority']}")
-    print(f"✓ Days Until Expiration: {result['result']['days_until_expiration']}")
-    print(f"✓ Spend: {result['result']['spend_percentage']}%")
-    print(f"✓ Alert Level: {result['result']['alert_level']}")
-    print(f"✓ Reasoning: {result['decision']['reasoning']}")
+    print(f"\nAction: {result['result']['action']}")
+    print(f"Priority: {result['result']['priority']}")
+    print(f"Days Until Expiration: {result['result']['days_until_expiration']}")
+    print(f"Spend: {result['result']['spend_percentage']}%")
+    print(f"Alert Level: {result['result']['alert_level']}")
+    print(f"Reasoning: {result['decision']['reasoning']}")
     
     assert result['result']['action'] == 'review_overspend_risk', "Should review overspend risk"
     assert result['result']['spend_percentage'] == 96.0, "Should show 96% spend"
     assert '96.0%' in result['decision']['reasoning'], "Should mention high spend percentage"
     assert result['result']['alert_level'] == 'HIGH', "Should be high alert due to spend"
     
-    print("\n✅ TEST 8 PASSED: High spend triggers overspend risk review")
+    print("\nTEST 8 PASSED: High spend triggers overspend risk review")
 
 
 async def test_missing_end_date():
@@ -372,15 +372,15 @@ async def test_missing_end_date():
     
     result = await agent.execute(context)
     
-    print(f"\n✓ Action: {result['result']['action']}")
-    print(f"✓ Priority: {result['result']['priority']}")
-    print(f"✓ Expiration Status: {result['result']['expiration_status']}")
-    print(f"✓ Reasoning: {result['decision']['reasoning']}")
+    print(f"\nAction: {result['result']['action']}")
+    print(f"Priority: {result['result']['priority']}")
+    print(f"Expiration Status: {result['result']['expiration_status']}")
+    print(f"Reasoning: {result['decision']['reasoning']}")
     
     assert result['result']['action'] == 'update_contract_data', "Should update contract data"
     assert result['result']['expiration_status'] == 'no_end_date', "Should flag missing date"
     
-    print("\n✅ TEST 9 PASSED: Missing data triggers update action")
+    print("\nTEST 9 PASSED: Missing data triggers update action")
 
 
 async def run_all_tests():
@@ -410,24 +410,24 @@ async def run_all_tests():
             await test_func()
             passed += 1
         except AssertionError as e:
-            print(f"\n❌ TEST FAILED: {e}")
+            print(f"\nTEST FAILED: {e}")
             failed += 1
         except Exception as e:
-            print(f"\n❌ TEST ERROR: {e}")
+            print(f"\nTEST ERROR: {e}")
             failed += 1
     
     print("\n" + "="*80)
     print("TEST SUMMARY")
     print("="*80)
     print(f"Total Tests: {len(tests)}")
-    print(f"✅ Passed: {passed}")
-    print(f"❌ Failed: {failed}")
+    print(f"Passed: {passed}")
+    print(f"Failed: {failed}")
     print(f"Success Rate: {(passed/len(tests)*100):.1f}%")
     
     if failed == 0:
-        print("\n🎉 ALL TESTS PASSED! ContractMonitoringAgent is fully operational.")
+        print("\nALL TESTS PASSED! ContractMonitoringAgent is fully operational.")
     else:
-        print(f"\n⚠️ {failed} test(s) failed. Review failures above.")
+        print(f"\n️ {failed} test(s) failed. Review failures above.")
     
     print("="*80)
 

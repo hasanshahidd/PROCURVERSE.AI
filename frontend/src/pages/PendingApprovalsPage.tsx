@@ -37,6 +37,7 @@ interface PendingApproval {
   review_notes?: string;
 }
 
+
 export default function PendingApprovalsPage() {
   const queryClient = useQueryClient();
   const API_BASE_URL = import.meta.env.VITE_API_URL || "";
@@ -45,7 +46,11 @@ export default function PendingApprovalsPage() {
   const [isApproving, setIsApproving] = useState(false);
   const [activeTab, setActiveTab] = useState("pending");
 
-  // Fetch pending approvals
+  // P2P workflow approvals now live in MyApprovalsPage (role-based)
+  // and SessionPage (session-scoped). This page is strictly for AI
+  // low-confidence decisions that need human review.
+
+  // Fetch low-confidence AI agent approvals
   const { data: approvals, isLoading, error, refetch } = useQuery<PendingApproval[]>({
     queryKey: ["/api/agentic/pending-approvals"],
     queryFn: async () => {
@@ -177,7 +182,17 @@ export default function PendingApprovalsPage() {
             Review and approve low-confidence agent decisions
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => activeTab === "pending" ? refetch() : refetchHistory()}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            if (activeTab === "pending") {
+              refetch();
+            } else {
+              refetchHistory();
+            }
+          }}
+        >
           <RefreshCcw className="h-4 w-4 mr-2" />
           Refresh
         </Button>
@@ -190,7 +205,9 @@ export default function PendingApprovalsPage() {
             <Clock className="h-4 w-4" />
             Pending
             {approvals && approvals.length > 0 && (
-              <Badge variant="secondary" className="ml-1">{approvals.length}</Badge>
+              <Badge variant="secondary" className="ml-1">
+                {approvals.length}
+              </Badge>
             )}
           </TabsTrigger>
           <TabsTrigger value="history" className="gap-2">
@@ -201,7 +218,7 @@ export default function PendingApprovalsPage() {
 
         {/* Pending Tab */}
         <TabsContent value="pending">
-          {!approvals || approvals.length === 0 ? (
+          {(!approvals || approvals.length === 0) ? (
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-16">
                 <Check className="h-16 w-16 text-green-500 mb-4" />
@@ -211,7 +228,7 @@ export default function PendingApprovalsPage() {
                 </p>
               </CardContent>
             </Card>
-          ) : (
+          ) : !approvals || approvals.length === 0 ? null : (
             <div className="space-y-4">
               {approvals.map((approval) => (
                   <Card key={approval.approval_id} className="hover:shadow-md transition-shadow">

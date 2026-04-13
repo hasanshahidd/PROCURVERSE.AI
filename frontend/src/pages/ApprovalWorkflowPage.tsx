@@ -12,8 +12,9 @@ import {
   Building2,
   X,
   ShoppingCart,
+  ArrowLeft,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -61,9 +62,19 @@ const LEVEL_LABELS: { [key: number]: string } = {
 
 export default function ApprovalWorkflowPage() {
   const API_BASE_URL = import.meta.env.VITE_API_URL || "";
-  const [searchTerm, setSearchTerm] = useState("");
+
+  // Read ?pr= and ?session= query params
+  const queryParams = useMemo(() => new URLSearchParams(window.location.search), []);
+  const highlightPR = queryParams.get("pr") || "";
+  const sessionId = queryParams.get("session") || "";
+
+  const [searchTerm, setSearchTerm] = useState(highlightPR);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [departmentFilter, setDepartmentFilter] = useState<string>("all");
+
+  // Auto-scroll to highlighted PR card
+  const highlightRef = useRef<HTMLDivElement>(null);
+  const didScroll = useRef(false);
 
   // Fetch workflows
   const { data: workflows, isLoading, error, refetch } = useQuery<ApprovalWorkflow[]>({
@@ -76,6 +87,17 @@ export default function ApprovalWorkflowPage() {
     },
     refetchInterval: 15000, // Refetch every 15 seconds
   });
+
+  // Auto-scroll to the highlighted PR once data loads
+  useEffect(() => {
+    if (highlightPR && workflows && workflows.length > 0 && !didScroll.current) {
+      didScroll.current = true;
+      // Small delay to let the DOM render
+      setTimeout(() => {
+        highlightRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 200);
+    }
+  }, [highlightPR, workflows]);
 
   // Filter workflows
   const filteredWorkflows = workflows?.filter((workflow) => {
@@ -172,6 +194,24 @@ export default function ApprovalWorkflowPage() {
         </Button>
       </div>
 
+      {/* Session back-link banner */}
+      {sessionId && (
+        <Alert className="border-blue-300 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-800">
+          <AlertDescription className="flex items-center justify-between">
+            <span className="text-sm text-blue-800 dark:text-blue-200">
+              Viewing approval lifecycle for an active P2P session
+              {highlightPR && <> &mdash; <strong>{highlightPR}</strong></>}
+            </span>
+            <Button variant="outline" size="sm" asChild>
+              <a href={`/sessions/${sessionId}`} className="gap-1.5">
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Return to Session
+              </a>
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Filters */}
       <Card>
         <CardHeader>
@@ -232,8 +272,14 @@ export default function ApprovalWorkflowPage() {
       ) : (
         <ScrollArea className="h-[calc(100vh-350px)]">
           <div className="space-y-4">
-            {filteredWorkflows.map((workflow) => (
-              <Card key={workflow.pr_number} className="hover:shadow-lg transition-shadow">
+            {filteredWorkflows.map((workflow) => {
+              const isHighlighted = highlightPR && workflow.pr_number === highlightPR;
+              return (
+              <Card
+                key={workflow.pr_number}
+                ref={isHighlighted ? highlightRef : undefined}
+                className={`hover:shadow-lg transition-shadow ${isHighlighted ? "ring-2 ring-blue-500 border-blue-400" : ""}`}
+              >
                 <CardHeader>
                   <div className="flex items-start justify-between">
                     <div className="space-y-2 flex-1">
@@ -394,7 +440,8 @@ export default function ApprovalWorkflowPage() {
                   </div>
                 </CardContent>
               </Card>
-            ))}
+              );
+            })}
           </div>
         </ScrollArea>
       )}

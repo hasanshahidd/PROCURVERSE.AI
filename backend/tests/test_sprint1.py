@@ -38,15 +38,15 @@ async def test_budget_agent():
         "pr_data": test_pr
     }
     
-    print(f"\n📋 Test PR: {test_pr['pr_number']}")
+    print(f"\nTest PR: {test_pr['pr_number']}")
     print(f"   Department: {test_pr['department']}")
     print(f"   Budget: ${test_pr['budget']:,}")
     print(f"   Category: {test_pr['budget_category']}")
     
-    print("\n🤖 Executing budget verification...")
+    print("\nExecuting budget verification...")
     result = await agent.execute(context)
     
-    print(f"\n✅ Result:")
+    print(f"\nResult:")
     print(json.dumps(result, indent=2))
     
     return result
@@ -74,13 +74,13 @@ async def test_orchestrator():
         }
     }
     
-    print(f"\n📨 Request: {test_request['request']}")
+    print(f"\nRequest: {test_request['request']}")
     print(f"   Budget: ${test_request['pr_data']['budget']:,}")
     
-    print("\n🎯 Orchestrator analyzing and routing...")
+    print("\nOrchestrator analyzing and routing...")
     result = await orchestrator.execute(test_request)
     
-    print(f"\n✅ Result:")
+    print(f"\nResult:")
     print(json.dumps(result, indent=2))
     
     return result
@@ -126,7 +126,7 @@ async def test_budget_threshold_alerts():
     ]
     
     for test in test_cases:
-        print(f"\n📋 {test['name']}")
+        print(f"\n{test['name']}")
         print(f"   PR: {test['pr']['pr_number']}")
         print(f"   Budget: ${test['pr']['budget']:,}")
         
@@ -142,7 +142,7 @@ async def test_budget_threshold_alerts():
             alert_level = result['result'].get('alert_level', 'none')
             print(f"   Alert Level: {alert_level}")
     
-    print("\n✅ Threshold tests completed")
+    print("\nThreshold tests completed")
 
 
 async def test_agent_decision_history():
@@ -169,7 +169,7 @@ async def test_agent_decision_history():
         
         await agent.execute(context)
     
-    print(f"\n📚 Decision History: {len(agent.decision_history)} decisions")
+    print(f"\nDecision History: {len(agent.decision_history)} decisions")
     
     for i, decision in enumerate(agent.decision_history, 1):
         print(f"\n   Decision {i}:")
@@ -177,13 +177,13 @@ async def test_agent_decision_history():
         print(f"   - Confidence: {decision.confidence:.2f}")
         print(f"   - Reasoning: {decision.reasoning[:60]}...")
     
-    print("\n✅ Decision history test completed")
+    print("\nDecision history test completed")
 
 
 async def main():
     """Run all tests"""
     print("\n" + "="*60)
-    print("🚀 AGENTIC PROCUREMENT SYSTEM - SPRINT 1 TESTS")
+    print("AGENTIC PROCUREMENT SYSTEM - SPRINT 1 TESTS")
     print("="*60)
     print("\nTesting:")
     print("1. Budget Verification Agent (direct execution)")
@@ -198,19 +198,19 @@ async def main():
         await test_agent_decision_history()
         
         print("\n" + "="*60)
-        print("✅ ALL TESTS COMPLETED SUCCESSFULLY")
+        print("ALL TESTS COMPLETED SUCCESSFULLY")
         print("="*60)
-        print("\n📊 Sprint 1 Foundation Status:")
-        print("   ✅ LangChain installed")
-        print("   ✅ Base agent framework working")
-        print("   ✅ Custom database tables created")
-        print("   ✅ Orchestrator routing functional")
-        print("   ✅ Tool wrappers operational")
-        print("   ✅ Budget verification agent implemented")
-        print("\n🎯 Ready for Sprint 2: More specialized agents!")
+        print("\nSprint 1 Foundation Status:")
+        print("   LangChain installed")
+        print("   Base agent framework working")
+        print("   Custom database tables created")
+        print("   Orchestrator routing functional")
+        print("   Tool wrappers operational")
+        print("   Budget verification agent implemented")
+        print("\nReady for Sprint 2: More specialized agents!")
         
     except Exception as e:
-        print(f"\n❌ TEST FAILED: {str(e)}")
+        print(f"\nTEST FAILED: {str(e)}")
         import traceback
         traceback.print_exc()
 

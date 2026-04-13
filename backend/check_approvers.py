@@ -1,8 +1,10 @@
-import psycopg2
+import os, psycopg2
 from psycopg2.extras import RealDictCursor
 import json
+from dotenv import load_dotenv
+load_dotenv()
 
-conn = psycopg2.connect('postgresql://postgres:YourStr0ng!Pass@localhost:5433/odoo_procurement_demo')
+conn = psycopg2.connect(os.getenv('DATABASE_URL') or 'postgresql://postgres:postgres@localhost:5433/odoo_procurement_demo')
 cur = conn.cursor(cursor_factory=RealDictCursor)
 
 # Get IT approval chain

@@ -57,18 +57,18 @@ def execute_custom_select_query(sql: str) -> list:
 @router.get("/stats")
 async def get_stats(current_user: dict = Depends(require_auth())):
     print("\n" + "="*80)
-    print("[STATS ENDPOINT] 📊 System stats requested")
+    logger.info("[STATS ENDPOINT] System stats requested")
     print("="*80)
     try:
-        print("[STATS] 🔍 Querying system statistics...")
+        logger.info("[STATS] Querying system statistics...")
         stats = hybrid_query.get_system_stats()
-        print(f"[STATS] ✅ Retrieved: Odoo ({stats.get('odoo', {}).get('purchase_orders', 0)} POs), Agentic ({stats.get('agentic_tables', {}).get('agent_actions', 0)} actions)")
+        logger.info(f"[STATS] Retrieved: Odoo ({stats.get('odoo', {}).get('purchase_orders', 0)} POs), Agentic ({stats.get('agentic_tables', {}).get('agent_actions', 0)} actions)")
         print("="*80 + "\n")
         return stats
     except Exception as e:
-        print(f"[STATS] ❌ ERROR: {str(e)}")
+        logger.info(f"[STATS] ERROR: {str(e)}")
         import traceback
-        print(f"[STATS] 📋 Traceback:\n{traceback.format_exc()}")
+        logger.info(f"[STATS] Traceback:\n{traceback.format_exc()}")
         print("="*80 + "\n")
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -78,10 +78,10 @@ async def chat(request: ChatRequest, current_user: dict = Depends(require_auth()
     Hybrid conversational endpoint - works with Odoo + custom agentic tables
     """
     print("\n" + "="*80)
-    print("[CHAT ENDPOINT] 💬 New chat request received")
+    logger.info("[CHAT ENDPOINT] New chat request received")
     print("="*80)
     try:
-        print(f"[CHAT] 📥 Request details:")
+        logger.info(f"[CHAT] Request details:")
         print(f"[CHAT]   - Message: {request.message[:100]}{'...' if len(request.message) > 100 else ''}")
         print(f"[CHAT]   - Language: {request.language}")
         print(f"[CHAT]   - History length: {len(request.history)}")
@@ -93,21 +93,21 @@ async def chat(request: ChatRequest, current_user: dict = Depends(require_auth()
         user_language = request.language
         
         if translation_service.is_translation_needed(user_language):
-            print(f"[CHAT] 🌐 Translation required: {user_language} → en")
+            logger.info(f"[CHAT] Translation required: {user_language} → en")
             request.message = translation_service.translate_to_english(
                 request.message, 
                 user_language
             )
-            print(f"[CHAT] ✅ Translated: {original_message[:50]} → {request.message[:50]}")
+            logger.info(f"[CHAT] Translated: {original_message[:50]} → {request.message[:50]}")
         else:
-            print(f"[CHAT] ⏭️  No translation needed (language: {user_language})")
+            logger.info(f"[CHAT] ⏭️  No translation needed (language: {user_language})")
         
         # ============================================
         # STEP 2: Route query through unified query router
         # ============================================
-        print(f"\n[CHAT ENDPOINT] 🔍 Routing query through unified query router...")
-        print(f"[CHAT ENDPOINT] 📝 Message: '{request.message}'")
-        print(f"[CHAT ENDPOINT] 🌍 User language: {user_language}")
+        logger.info(f"\n[CHAT ENDPOINT] Routing query through unified query router...")
+        logger.info(f"[CHAT ENDPOINT] Message: '{request.message}'")
+        logger.info(f"[CHAT ENDPOINT] User language: {user_language}")
         
         # Use unified router (handles general/odoo/agentic/multi-intent automatically)
         result = query_router.route_and_execute_query(request.message, language="en")
@@ -183,14 +183,14 @@ async def get_suggestions(request: SuggestionRequest, current_user: dict = Depen
 async def chat_stream(request: ChatRequest, current_user: dict = Depends(require_auth())):
     """Streaming endpoint with hybrid query system (Odoo + custom tables)"""
     print("\n" + "="*80)
-    print("[STREAM ENDPOINT] 🌐 SSE Stream request received")
+    logger.info("[STREAM ENDPOINT] SSE Stream request received")
     print("="*80)
-    print(f"[STREAM] 📥 Message: '{request.message[:100]}{'...' if len(request.message) > 100 else ''}'")
-    print(f"[STREAM] 🌍 Language: {request.language}")
+    logger.info(f"[STREAM] Message: '{request.message[:100]}{'...' if len(request.message) > 100 else ''}'")
+    logger.info(f"[STREAM] Language: {request.language}")
     
     async def generate_stream():
         try:
-            print(f"[STREAM] 🚀 Starting stream generation...")
+            logger.info(f"[STREAM] Starting stream generation...")
             # ============================================
             # STEP 1: Translate input to English if needed
             # ============================================
@@ -198,19 +198,19 @@ async def chat_stream(request: ChatRequest, current_user: dict = Depends(require
             user_language = request.language
             
             if translation_service.is_translation_needed(user_language):
-                print(f"[STREAM] 🌐 Translating: {user_language} → en")
+                logger.info(f"[STREAM] Translating: {user_language} → en")
                 request.message = translation_service.translate_to_english(
                     request.message, user_language
                 )
-                print(f"[STREAM] ✅ Translation complete")
+                logger.info(f"[STREAM] Translation complete")
             
             # Step 1: Analyzing query (0-25%)
             yield f"data: {json.dumps({'type': 'progress', 'step': 1, 'total': 4, 'status': 'active', 'message': 'Analyzing your question'})}\n\n"
             await asyncio.sleep(0.2)
             
             # Classify query type
-            print(f"\n[STREAM ENDPOINT] 🔍 Processing: '{request.message}'")
-            print(f"[STREAM ENDPOINT] 🌍 Language: {user_language}")
+            logger.info(f"\n[STREAM ENDPOINT] Processing: '{request.message}'")
+            logger.info(f"[STREAM ENDPOINT] Language: {user_language}")
             
             classification = query_router.classify_query_intent(request.message)
             data_source = classification.get("data_source", "general")
@@ -243,20 +243,20 @@ async def chat_stream(request: ChatRequest, current_user: dict = Depends(require
                 yield f"data: {json.dumps({'type': 'progress', 'step': 2, 'total': 4, 'status': 'active', 'message': 'Searching data sources'})}\n\n"
                 await asyncio.sleep(0.2)
                 
-                print(f"[STREAM ENDPOINT] 🔄 Calling route_and_execute_query...")
+                logger.info(f"[STREAM ENDPOINT] Calling route_and_execute_query...")
                 result = query_router.route_and_execute_query(request.message, language="en")
-                print(f"[STREAM ENDPOINT] ✅ Got result from query_router")
-                print(f"[STREAM ENDPOINT] 📦 Result keys: {list(result.keys())}")
-                print(f"[STREAM ENDPOINT] 📊 Result data count: {len(result.get('data', []))}")
-                print(f"[STREAM ENDPOINT] 💬 Explanation length: {len(result.get('explanation', ''))}")
+                logger.info(f"[STREAM ENDPOINT] Got result from query_router")
+                logger.info(f"[STREAM ENDPOINT] Result keys: {list(result.keys())}")
+                logger.info(f"[STREAM ENDPOINT] Result data count: {len(result.get('data', []))}")
+                logger.info(f"[STREAM ENDPOINT] Explanation length: {len(result.get('explanation', ''))}")
                 
                 data_list = result.get("data", [])
                 response_text = result.get("explanation", "")
                 
-                print(f"[STREAM ENDPOINT] ✅ Extracted data_list: {len(data_list)} records")
-                print(f"[STREAM ENDPOINT] ✅ Extracted response_text: {len(response_text)} chars")
+                logger.info(f"[STREAM ENDPOINT] Extracted data_list: {len(data_list)} records")
+                logger.info(f"[STREAM ENDPOINT] Extracted response_text: {len(response_text)} chars")
                 if data_list:
-                    print(f"[STREAM ENDPOINT] 📋 First data record: {data_list[0]}")
+                    logger.info(f"[STREAM ENDPOINT] First data record: {data_list[0]}")
                 
                 yield f"data: {json.dumps({'type': 'progress', 'step': 2, 'total': 4, 'status': 'completed', 'message': 'Data retrieved'})}\n\n"
                 await asyncio.sleep(0.05)

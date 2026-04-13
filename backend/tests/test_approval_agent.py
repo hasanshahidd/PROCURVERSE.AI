@@ -34,14 +34,14 @@ def test_approval_routing_direct():
     print(f"\nStatus Code: {response.status_code}")
     if response.status_code == 200:
         data = response.json()
-        print(f"✅ Agent: {data['agent']}")
-        print(f"✅ Status: {data['status']}")
+        print(f"Agent: {data['agent']}")
+        print(f"Status: {data['status']}")
         print(f"\nDecision:")
         print(json.dumps(data.get('decision'), indent=2))
         print(f"\nResult:")
         print(json.dumps(data.get('result'), indent=2))
     else:
-        print(f"❌ Error: {response.text}")
+        print(f"Error: {response.text}")
 
 
 def test_high_amount_approval():
@@ -68,14 +68,14 @@ def test_high_amount_approval():
     print(f"\nStatus Code: {response.status_code}")
     if response.status_code == 200:
         data = response.json()
-        print(f"✅ Agent: {data['agent']}")
-        print(f"✅ Status: {data['status']}")
+        print(f"Agent: {data['agent']}")
+        print(f"Status: {data['status']}")
         print(f"\nDecision:")
         print(json.dumps(data.get('decision'), indent=2))
         print(f"\nResult:")
         print(json.dumps(data.get('result'), indent=2))
     else:
-        print(f"❌ Error: {response.text}")
+        print(f"Error: {response.text}")
 
 
 def test_orchestrator_routing():
@@ -101,14 +101,14 @@ def test_orchestrator_routing():
     print(f"\nStatus Code: {response.status_code}")
     if response.status_code == 200:
         data = response.json()
-        print(f"✅ Agent Routed To: {data['agent']}")
-        print(f"✅ Status: {data['status']}")
+        print(f"Agent Routed To: {data['agent']}")
+        print(f"Status: {data['status']}")
         print(f"\nDecision:")
         print(json.dumps(data.get('decision'), indent=2))
         print(f"\nResult:")
         print(json.dumps(data.get('result'), indent=2))
     else:
-        print(f"❌ Error: {response.text}")
+        print(f"Error: {response.text}")
 
 
 def test_unknown_department():
@@ -133,14 +133,14 @@ def test_unknown_department():
     print(f"\nStatus Code: {response.status_code}")
     if response.status_code == 200:
         data = response.json()
-        print(f"✅ Agent: {data['agent']}")
-        print(f"✅ Status: {data['status']}")
+        print(f"Agent: {data['agent']}")
+        print(f"Status: {data['status']}")
         print(f"\nDecision:")
         print(json.dumps(data.get('decision'), indent=2))
         print(f"\nResult:")
         print(json.dumps(data.get('result'), indent=2))
     else:
-        print(f"❌ Error: {response.text}")
+        print(f"Error: {response.text}")
 
 
 def test_agent_registration():
@@ -154,7 +154,7 @@ def test_agent_registration():
     print(f"\nStatus Code: {response.status_code}")
     if response.status_code == 200:
         data = response.json()
-        print(f"✅ Total Agents: {data['count']}")
+        print(f"Total Agents: {data['count']}")
         
         for agent in data['agents']:
             print(f"\n  Agent: {agent['name']}")
@@ -163,7 +163,7 @@ def test_agent_registration():
             print(f"  Tools: {agent['tools_count']}")
             print(f"  Decisions: {agent['decision_history_count']}")
     else:
-        print(f"❌ Error: {response.text}")
+        print(f"Error: {response.text}")
 
 
 def test_system_status():
@@ -177,16 +177,16 @@ def test_system_status():
     print(f"\nStatus Code: {response.status_code}")
     if response.status_code == 200:
         data = response.json()
-        print(f"✅ System: {data.get('system')}")
-        print(f"✅ Version: {data.get('version')}")
+        print(f"System: {data.get('system')}")
+        print(f"Version: {data.get('version')}")
         print(f"\nAgent Status:")
         print(json.dumps(data.get('agent_status'), indent=2))
     else:
-        print(f"❌ Error: {response.text}")
+        print(f"Error: {response.text}")
 
 
 if __name__ == "__main__":
-    print("\n🚀 SPRINT 2 - APPROVAL ROUTING AGENT TESTS")
+    print("\nSPRINT 2 - APPROVAL ROUTING AGENT TESTS")
     print("="*60)
     
     tests = [
@@ -202,12 +202,12 @@ if __name__ == "__main__":
         try:
             test()
         except requests.exceptions.ConnectionError:
-            print("\n❌ ERROR: Cannot connect to backend at http://localhost:5000")
+            print("\nERROR: Cannot connect to backend at http://localhost:5000")
             print("   Make sure the backend is running: uvicorn backend.main:app --reload")
             break
         except Exception as e:
-            print(f"\n❌ Test failed with error: {e}")
+            print(f"\nTest failed with error: {e}")
     
     print("\n" + "="*60)
-    print("✅ ALL TESTS COMPLETED")
+    print("ALL TESTS COMPLETED")
     print("="*60)

@@ -65,17 +65,17 @@ async def test_excellent_supplier():
     
     result = await agent.execute(context)
     
-    print(f"\n✓ Agent: {result['agent']}")
-    print(f"✓ Status: {result['status']}")
-    print(f"✓ Action: {result['result']['action']}")
-    print(f"✓ Overall Score: {result['result']['overall_score']}/100")
-    print(f"✓ Performance Level: {result['result']['performance_level']}")
-    print(f"✓ Delivery Score: {result['result']['delivery_score']}")
-    print(f"✓ Quality Score: {result['result']['quality_score']}")
-    print(f"✓ Price Score: {result['result']['price_score']}")
-    print(f"✓ Communication Score: {result['result']['communication_score']}")
-    print(f"✓ Risk Level: {result['result']['risk_level']}")
-    print(f"\n✓ Reasoning: {result['decision']['reasoning']}")
+    print(f"\nAgent: {result['agent']}")
+    print(f"Status: {result['status']}")
+    print(f"Action: {result['result']['action']}")
+    print(f"Overall Score: {result['result']['overall_score']}/100")
+    print(f"Performance Level: {result['result']['performance_level']}")
+    print(f"Delivery Score: {result['result']['delivery_score']}")
+    print(f"Quality Score: {result['result']['quality_score']}")
+    print(f"Price Score: {result['result']['price_score']}")
+    print(f"Communication Score: {result['result']['communication_score']}")
+    print(f"Risk Level: {result['result']['risk_level']}")
+    print(f"\nReasoning: {result['decision']['reasoning']}")
     
     assert result['status'] == 'success', "Should complete successfully"
     assert result['result']['performance_level'] == 'excellent', "Should be excellent level"
@@ -83,7 +83,7 @@ async def test_excellent_supplier():
     assert result['result']['action'] == 'strategic_partnership', "Should recommend partnership"
     assert result['result']['risk_level'] == 'MINIMAL', "Should be minimal risk"
     
-    print("\n✅ TEST 1 PASSED: Excellent supplier identified for strategic partnership")
+    print("\nTEST 1 PASSED: Excellent supplier identified for strategic partnership")
 
 
 async def test_good_supplier():
@@ -127,17 +127,17 @@ async def test_good_supplier():
     
     result = await agent.execute(context)
     
-    print(f"\n✓ Overall Score: {result['result']['overall_score']}/100")
-    print(f"✓ Performance Level: {result['result']['performance_level']}")
-    print(f"✓ Action: {result['result']['action']}")
-    print(f"✓ Risk Level: {result['result']['risk_level']}")
+    print(f"\nOverall Score: {result['result']['overall_score']}/100")
+    print(f"Performance Level: {result['result']['performance_level']}")
+    print(f"Action: {result['result']['action']}")
+    print(f"Risk Level: {result['result']['risk_level']}")
     
     assert result['result']['performance_level'] == 'good', "Should be good level"
     assert 75 <= result['result']['overall_score'] < 90, "Score should be 75-89"
     assert result['result']['action'] == 'maintain_relationship', "Should maintain relationship"
     assert result['result']['risk_level'] == 'MINIMAL', "Should be minimal risk"
     
-    print("\n✅ TEST 2 PASSED: Good supplier relationship maintained")
+    print("\nTEST 2 PASSED: Good supplier relationship maintained")
 
 
 async def test_fair_supplier():
@@ -180,11 +180,11 @@ async def test_fair_supplier():
     
     result = await agent.execute(context)
     
-    print(f"\n✓ Overall Score: {result['result']['overall_score']}/100")
-    print(f"✓ Performance Level: {result['result']['performance_level']}")
-    print(f"✓ Action: {result['result']['action']}")
-    print(f"✓ Risk Level: {result['result']['risk_level']}")
-    print(f"\n✓ Recommendations:")
+    print(f"\nOverall Score: {result['result']['overall_score']}/100")
+    print(f"Performance Level: {result['result']['performance_level']}")
+    print(f"Action: {result['result']['action']}")
+    print(f"Risk Level: {result['result']['risk_level']}")
+    print(f"\nRecommendations:")
     for rec in result['result']['recommendations']:
         print(f"   - {rec}")
     
@@ -193,7 +193,7 @@ async def test_fair_supplier():
     assert result['result']['action'] == 'monitor_and_improve', "Should monitor and improve"
     assert result['result']['risk_level'] == 'LOW', "Should be low risk"
     
-    print("\n✅ TEST 3 PASSED: Fair supplier requires monitoring and improvement")
+    print("\nTEST 3 PASSED: Fair supplier requires monitoring and improvement")
 
 
 async def test_poor_supplier():
@@ -236,12 +236,12 @@ async def test_poor_supplier():
     
     result = await agent.execute(context)
     
-    print(f"\n✓ Overall Score: {result['result']['overall_score']}/100")
-    print(f"✓ Performance Level: {result['result']['performance_level']}")
-    print(f"✓ Action: {result['result']['action']}")
-    print(f"✓ Urgency: {result['result']['urgency']}")
-    print(f"✓ Risk Level: {result['result']['risk_level']}")
-    print(f"\n✓ Reasoning: {result['decision']['reasoning']}")
+    print(f"\nOverall Score: {result['result']['overall_score']}/100")
+    print(f"Performance Level: {result['result']['performance_level']}")
+    print(f"Action: {result['result']['action']}")
+    print(f"Urgency: {result['result']['urgency']}")
+    print(f"Risk Level: {result['result']['risk_level']}")
+    print(f"\nReasoning: {result['decision']['reasoning']}")
     
     assert result['result']['performance_level'] == 'poor', "Should be poor level"
     assert 40 <= result['result']['overall_score'] < 60, "Score should be 40-59"
@@ -249,7 +249,7 @@ async def test_poor_supplier():
     assert result['result']['urgency'] == 'HIGH', "Should be high urgency"
     assert result['result']['risk_level'] == 'MEDIUM', "Should be medium risk"
     
-    print("\n✅ TEST 4 PASSED: Poor supplier requires performance improvement plan")
+    print("\nTEST 4 PASSED: Poor supplier requires performance improvement plan")
 
 
 async def test_critical_supplier():
@@ -292,12 +292,12 @@ async def test_critical_supplier():
     
     result = await agent.execute(context)
     
-    print(f"\n✓ Overall Score: {result['result']['overall_score']}/100")
-    print(f"✓ Performance Level: {result['result']['performance_level']}")
-    print(f"✓ Action: {result['result']['action']}")
-    print(f"✓ Urgency: {result['result']['urgency']}")
-    print(f"✓ Risk Level: {result['result']['risk_level']}")
-    print(f"\n✓ Recommended Actions:")
+    print(f"\nOverall Score: {result['result']['overall_score']}/100")
+    print(f"Performance Level: {result['result']['performance_level']}")
+    print(f"Action: {result['result']['action']}")
+    print(f"Urgency: {result['result']['urgency']}")
+    print(f"Risk Level: {result['result']['risk_level']}")
+    print(f"\nRecommended Actions:")
     for action in result['result']['recommended_actions'][:3]:
         print(f"   - {action}")
     
@@ -307,7 +307,7 @@ async def test_critical_supplier():
     assert result['result']['urgency'] == 'CRITICAL', "Should be critical urgency"
     assert result['result']['risk_level'] == 'HIGH', "Should be high risk"
     
-    print("\n✅ TEST 5 PASSED: Critical supplier flagged for immediate review")
+    print("\nTEST 5 PASSED: Critical supplier flagged for immediate review")
 
 
 async def test_delivery_focused_issues():
@@ -350,11 +350,11 @@ async def test_delivery_focused_issues():
     
     result = await agent.execute(context)
     
-    print(f"\n✓ Overall Score: {result['result']['overall_score']}/100")
-    print(f"✓ Delivery Score: {result['result']['delivery_score']} (LOW)")
-    print(f"✓ Quality Score: {result['result']['quality_score']} (HIGH)")
-    print(f"✓ Action: {result['result']['action']}")
-    print(f"\n✓ Key Recommendations:")
+    print(f"\nOverall Score: {result['result']['overall_score']}/100")
+    print(f"Delivery Score: {result['result']['delivery_score']} (LOW)")
+    print(f"Quality Score: {result['result']['quality_score']} (HIGH)")
+    print(f"Action: {result['result']['action']}")
+    print(f"\nKey Recommendations:")
     for rec in result['result']['recommendations']:
         if 'delivery' in rec.lower() or 'delay' in rec.lower():
             print(f"   - {rec}")
@@ -364,7 +364,7 @@ async def test_delivery_focused_issues():
     assert any('delivery' in rec.lower() for rec in result['result']['recommendations']), \
         "Should recommend delivery improvements"
     
-    print("\n✅ TEST 6 PASSED: Delivery issues identified with specific recommendations")
+    print("\nTEST 6 PASSED: Delivery issues identified with specific recommendations")
 
 
 async def test_quality_focused_issues():
@@ -407,11 +407,11 @@ async def test_quality_focused_issues():
     
     result = await agent.execute(context)
     
-    print(f"\n✓ Overall Score: {result['result']['overall_score']}/100")
-    print(f"✓ Delivery Score: {result['result']['delivery_score']} (HIGH)")
-    print(f"✓ Quality Score: {result['result']['quality_score']} (LOW)")
-    print(f"✓ Action: {result['result']['action']}")
-    print(f"\n✓ Quality Recommendations:")
+    print(f"\nOverall Score: {result['result']['overall_score']}/100")
+    print(f"Delivery Score: {result['result']['delivery_score']} (HIGH)")
+    print(f"Quality Score: {result['result']['quality_score']} (LOW)")
+    print(f"Action: {result['result']['action']}")
+    print(f"\nQuality Recommendations:")
     for rec in result['result']['recommendations']:
         if 'quality' in rec.lower() or 'defect' in rec.lower():
             print(f"   - {rec}")
@@ -422,7 +422,7 @@ async def test_quality_focused_issues():
                for rec in result['result']['recommendations']), \
         "Should recommend quality improvements"
     
-    print("\n✅ TEST 7 PASSED: Quality issues identified with specific recommendations")
+    print("\nTEST 7 PASSED: Quality issues identified with specific recommendations")
 
 
 async def test_new_supplier_insufficient_data():
@@ -450,10 +450,10 @@ async def test_new_supplier_insufficient_data():
     
     result = await agent.execute(context)
     
-    print(f"\n✓ Overall Score: {result['result']['overall_score']}/100")
-    print(f"✓ Performance Level: {result['result']['performance_level']}")
-    print(f"✓ Action: {result['result']['action']}")
-    print(f"✓ Urgency: {result['result']['urgency']}")
+    print(f"\nOverall Score: {result['result']['overall_score']}/100")
+    print(f"Performance Level: {result['result']['performance_level']}")
+    print(f"Action: {result['result']['action']}")
+    print(f"Urgency: {result['result']['urgency']}")
     
     # Agent uses defaults for missing data, which gives ~75/100 score (good level)
     # This is correct behavior - maintaining relationship for promising new supplier
@@ -461,7 +461,7 @@ async def test_new_supplier_insufficient_data():
     assert result['result']['action'] == 'maintain_relationship', "Should maintain relationship"
     assert result['result']['overall_score'] >= 70, "Should have reasonable default score"
     
-    print("\n✅ TEST 8 PASSED: New supplier evaluated with default scores")  
+    print("\nTEST 8 PASSED: New supplier evaluated with default scores")  
 
 
 async def run_all_tests():
@@ -490,24 +490,24 @@ async def run_all_tests():
             await test_func()
             passed += 1
         except AssertionError as e:
-            print(f"\n❌ TEST FAILED: {e}")
+            print(f"\nTEST FAILED: {e}")
             failed += 1
         except Exception as e:
-            print(f"\n❌ TEST ERROR: {e}")
+            print(f"\nTEST ERROR: {e}")
             failed += 1
     
     print("\n" + "="*80)
     print("TEST SUMMARY")
     print("="*80)
     print(f"Total Tests: {len(tests)}")
-    print(f"✅ Passed: {passed}")
-    print(f"❌ Failed: {failed}")
+    print(f"Passed: {passed}")
+    print(f"Failed: {failed}")
     print(f"Success Rate: {(passed/len(tests)*100):.1f}%")
     
     if failed == 0:
-        print("\n🎉 ALL TESTS PASSED! SupplierPerformanceAgent is fully operational.")
+        print("\nALL TESTS PASSED! SupplierPerformanceAgent is fully operational.")
     else:
-        print(f"\n⚠️ {failed} test(s) failed. Review failures above.")
+        print(f"\n️ {failed} test(s) failed. Review failures above.")
     
     print("="*80)
 

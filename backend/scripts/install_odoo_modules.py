@@ -16,10 +16,10 @@ def check_module_availability():
     client = get_odoo_client()
     
     if not client.is_connected():
-        print("❌ Cannot connect to Odoo - make sure it's running")
+        print("Cannot connect to Odoo - make sure it's running")
         return
     
-    print("🔍 Checking available modules...\n")
+    print("Checking available modules...\n")
     
     # Target modules we want to install
     target_modules = [
@@ -45,20 +45,20 @@ def check_module_availability():
                 state = module['state']
                 
                 if state == 'installed':
-                    print(f"✅ {module_name}: Already installed")
+                    print(f"{module_name}: Already installed")
                     print(f"   {module.get('shortdesc', 'No description')}\n")
                 elif state == 'uninstalled':
-                    print(f"⚠️  {module_name}: Available but not installed")
+                    print(f"️  {module_name}: Available but not installed")
                     print(f"   {module.get('shortdesc', 'No description')}")
                     print(f"   State: {state}\n")
                 else:
-                    print(f"📦 {module_name}: State = {state}")
+                    print(f"{module_name}: State = {state}")
                     print(f"   {module.get('shortdesc', 'No description')}\n")
             else:
-                print(f"❌ {module_name}: NOT FOUND (not available in this Odoo installation)\n")
+                print(f"{module_name}: NOT FOUND (not available in this Odoo installation)\n")
         
         except Exception as e:
-            print(f"❌ Error checking {module_name}: {str(e)}\n")
+            print(f"Error checking {module_name}: {str(e)}\n")
 
 
 def list_all_procurement_modules():
@@ -69,7 +69,7 @@ def list_all_procurement_modules():
         return
     
     print("\n" + "="*70)
-    print("📋 ALL PROCUREMENT-RELATED MODULES")
+    print("ALL PROCUREMENT-RELATED MODULES")
     print("="*70 + "\n")
     
     try:
@@ -84,16 +84,16 @@ def list_all_procurement_modules():
         installed = [m for m in modules if m['state'] == 'installed']
         uninstalled = [m for m in modules if m['state'] == 'uninstalled']
         
-        print(f"✅ INSTALLED ({len(installed)}):")
+        print(f"INSTALLED ({len(installed)}):")
         for m in installed:
             print(f"   • {m['name']}: {m['shortdesc']}")
         
-        print(f"\n📦 AVAILABLE TO INSTALL ({len(uninstalled)}):")
+        print(f"\nAVAILABLE TO INSTALL ({len(uninstalled)}):")
         for m in uninstalled:
             print(f"   • {m['name']}: {m['shortdesc']}")
     
     except Exception as e:
-        print(f"❌ Error listing modules: {str(e)}")
+        print(f"Error listing modules: {str(e)}")
 
 
 def install_module(module_name):
@@ -101,11 +101,11 @@ def install_module(module_name):
     client = get_odoo_client()
     
     if not client.is_connected():
-        print("❌ Cannot connect to Odoo")
+        print("Cannot connect to Odoo")
         return False
     
     try:
-        print(f"\n🔄 Installing {module_name}...")
+        print(f"\nInstalling {module_name}...")
         
         # Find module ID
         modules = client.execute_kw(
@@ -115,7 +115,7 @@ def install_module(module_name):
         )
         
         if not modules:
-            print(f"❌ Module {module_name} not found or already installed")
+            print(f"Module {module_name} not found or already installed")
             return False
         
         module_id = modules[0]
@@ -127,12 +127,12 @@ def install_module(module_name):
             [[module_id]]
         )
         
-        print(f"✅ {module_name} installation initiated!")
+        print(f"{module_name} installation initiated!")
         print(f"   This may take a few moments...")
         return True
         
     except Exception as e:
-        print(f"❌ Error installing {module_name}: {str(e)}")
+        print(f"Error installing {module_name}: {str(e)}")
         return False
 
 
@@ -141,11 +141,11 @@ def update_apps_list():
     client = get_odoo_client()
     
     if not client.is_connected():
-        print("❌ Cannot connect to Odoo")
+        print("Cannot connect to Odoo")
         return False
     
     try:
-        print("\n🔄 Updating Odoo apps list...")
+        print("\nUpdating Odoo apps list...")
         
         # This updates the module list from the addons path
         client.execute_kw(
@@ -154,11 +154,11 @@ def update_apps_list():
             [[]]
         )
         
-        print("✅ Apps list updated successfully!")
+        print("Apps list updated successfully!")
         return True
         
     except Exception as e:
-        print(f"❌ Error updating apps list: {str(e)}")
+        print(f"Error updating apps list: {str(e)}")
         print("   You may need to do this manually via Odoo UI:")
         print("   Settings > Apps > Update Apps List")
         return False
@@ -166,7 +166,7 @@ def update_apps_list():
 
 if __name__ == "__main__":
     print("="*70)
-    print("🚀 ODOO MODULE INSTALLER")
+    print("ODOO MODULE INSTALLER")
     print("="*70)
     
     # Step 1: Update apps list
@@ -182,7 +182,7 @@ if __name__ == "__main__":
     
     # Step 4: Attempt to install
     print("\n" + "="*70)
-    print("📦 INSTALLATION PHASE")
+    print("INSTALLATION PHASE")
     print("="*70)
     
     modules_to_install = [
@@ -191,19 +191,19 @@ if __name__ == "__main__":
         'approvals',
     ]
     
-    user_input = input("\n❓ Do you want to install available modules? (yes/no): ").strip().lower()
+    user_input = input("\nDo you want to install available modules? (yes/no): ").strip().lower()
     
     if user_input == 'yes' or user_input == 'y':
         for module in modules_to_install:
             install_module(module)
         
         print("\n" + "="*70)
-        print("✅ INSTALLATION COMPLETE")
+        print("INSTALLATION COMPLETE")
         print("="*70)
-        print("\n⚠️  You may need to restart Odoo for changes to take effect:")
+        print("\n️  You may need to restart Odoo for changes to take effect:")
         print("   1. Stop Odoo server")
         print("   2. Start Odoo server again")
         print("   3. Or use: Settings > Apps > Update Apps List in UI")
     else:
-        print("\n ℹ️  Installation skipped. You can install modules manually via:")
+        print("\n ️  Installation skipped. You can install modules manually via:")
         print("   Odoo UI > Settings > Apps > Search module name > Install")

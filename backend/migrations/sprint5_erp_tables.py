@@ -867,7 +867,7 @@ CREATE TABLE IF NOT EXISTS spend_erpnext (
 print("Creating ERP-specific tables...")
 for tbl, ddl in schemas.items():
     cur.execute(ddl)
-    print(f"  ✓ {tbl}")
+    print(f"  {tbl}")
 conn.commit()
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -896,7 +896,7 @@ execute_values(cur, """
     ('Precision Tools Japan',      'VND-011', 'JP-555666777', 'company', '7-1 Minato Mirai',     'Yokohama',     'JP', '+81-45-555-1111', 'export@precisiontool.jp',  '21000', '60 Net',  1, True, 'JPY'),
     ('AusStar Mining Supplies',    'VND-012', 'AU-333444555', 'company', '45 Harbour Parade',    'Perth',        'AU', '+61-8-555-1212',  'orders@aussstar.com.au',   '21000', '30 Net',  1, True, 'AUD'),
 ])
-print("  ✓ vendors_odoo (12 rows)")
+print("  vendors_odoo (12 rows)")
 
 # ── SAP S/4HANA VENDORS ───────────────────────────────────────────────────────
 cur.execute("DELETE FROM vendors_sap_s4")
@@ -918,7 +918,7 @@ execute_values(cur, """
     ('0000100011','Precision Tools Japan',     'Precision',   'JP','Yokohama',    '7-1 Minato Mirai',     '+81455551111','export@precisiontool.jp', 'KRED','160000','NT60','G10','JPY','1000','1000'),
     ('0000100012','AusStar Mining Supplies',   'AusStar',     'AU','Perth',       '45 Harbour Parade',    '+6185551212','orders@aussstar.com.au',   'KRED','160000','NT30','G20','AUD','1000','1000'),
 ])
-print("  ✓ vendors_sap_s4 (12 rows)")
+print("  vendors_sap_s4 (12 rows)")
 
 # ── SAP B1 VENDORS ────────────────────────────────────────────────────────────
 cur.execute("DELETE FROM vendors_sap_b1")
@@ -940,7 +940,7 @@ execute_values(cur, """
     ('V-PTJ011', 'Precision Tools Japan',      'S', 102, 6,  'T',  'JP', 'Yokohama',    '+81455551111','export@precisiontool.jp','JPY','N'),
     ('V-AMS012', 'AusStar Mining Supplies',    'S', 102, 3,  'T',  'AU', 'Perth',       '+6185551212','orders@aussstar.com.au','AUD','N'),
 ])
-print("  ✓ vendors_sap_b1 (12 rows)")
+print("  vendors_sap_b1 (12 rows)")
 
 # ── MS DYNAMICS VENDORS ───────────────────────────────────────────────────────
 cur.execute("DELETE FROM vendors_dynamics")
@@ -963,7 +963,7 @@ execute_values(cur, """
     ('V-00011','Precision Tools Japan',      'MANUF', 'JPY','JPN','Yokohama',   '+81455551111','export@precisiontool.jp','Net60','TRF','GEN','ITEM','No','BU002'),
     ('V-00012','AusStar Mining Supplies',    'MINING','AUD','AUS','Perth',      '+6185551212','orders@aussstar.com.au',  'Net30','TRF','GEN','ITEM','No','BU002'),
 ])
-print("  ✓ vendors_dynamics (12 rows)")
+print("  vendors_dynamics (12 rows)")
 
 # ── ORACLE FUSION VENDORS ─────────────────────────────────────────────────────
 cur.execute("DELETE FROM vendors_oracle")
@@ -986,7 +986,7 @@ execute_values(cur, """
     ('SUP-00011','Precision Tools Japan',      'SUPPLIER','CORPORATION','JP-555666777','3460','JP OU', 'NET60','WIRE', 'JPY','JP','Yokohama',   '+81455551111','export@precisiontool.jp',   'Y'),
     ('SUP-00012','AusStar Mining Supplies',    'SUPPLIER','CORPORATION','AU-333444555','1040','AU OU', 'NET30','WIRE', 'AUD','AU','Perth',      '+6185551212','orders@aussstar.com.au',     'Y'),
 ])
-print("  ✓ vendors_oracle (12 rows)")
+print("  vendors_oracle (12 rows)")
 
 # ── ERPNEXT VENDORS ───────────────────────────────────────────────────────────
 cur.execute("DELETE FROM vendors_erpnext")
@@ -1008,7 +1008,7 @@ execute_values(cur, """
     ('SUP-00011','Precision Tools Japan',      'Manufacturing',  'Company','Japan',        'JPY','Net 60', 'JP-555666777',0,'export@precisiontool.jp','+81455551111'),
     ('SUP-00012','AusStar Mining Supplies',    'Raw Materials',  'Company','Australia',    'AUD','Net 30', 'AU-333444555',0,'orders@aussstar.com.au', '+6185551212'),
 ])
-print("  ✓ vendors_erpnext (12 rows)")
+print("  vendors_erpnext (12 rows)")
 
 # ── PO HEADERS — all 6 ERPs ───────────────────────────────────────────────────
 cur.execute("DELETE FROM po_headers_odoo")
@@ -1028,7 +1028,7 @@ execute_values(cur, """
     ('PO00009','Delta Office Products',      '2025-03-15','2025-03-16','CAD', 22000.00, 3300.00, 25300.00,'done',   '30 Net'),
     ('PO00010','Pak Steel & Raw Materials',  '2025-04-01','2025-04-02','USD',155000.00,23250.00,178250.00,'purchase','Immediate'),
 ])
-print("  ✓ po_headers_odoo (10 rows)")
+print("  po_headers_odoo (10 rows)")
 
 cur.execute("DELETE FROM po_headers_sap_s4")
 execute_values(cur, """
@@ -1047,7 +1047,7 @@ execute_values(cur, """
     ('4500000009','1000','NB','0000100010','1000','G30','2025-03-15','CAD', 22000.00,'NT30','FOB','L'),
     ('4500000010','1000','NB','0000100005','1000','G20','2025-04-01','USD',155000.00,'SOFO','CFR','A'),
 ])
-print("  ✓ po_headers_sap_s4 (10 rows)")
+print("  po_headers_sap_s4 (10 rows)")
 
 cur.execute("DELETE FROM po_headers_sap_b1")
 execute_values(cur, """
@@ -1066,7 +1066,7 @@ execute_values(cur, """
     (10009,'2025-03-15','2025-04-14','V-DOP010','Delta Office Products',     'DOP-PO-009', 25300.00, 3300.00,'CAD','C'),
     (10010,'2025-04-01','2025-04-08','V-PSR005','Pak Steel & Raw Materials', 'PSR-PO-010',178250.00,23250.00,'USD','O'),
 ])
-print("  ✓ po_headers_sap_b1 (10 rows)")
+print("  po_headers_sap_b1 (10 rows)")
 
 cur.execute("DELETE FROM po_headers_dynamics")
 execute_values(cur, """
@@ -1086,7 +1086,7 @@ execute_values(cur, """
     ('PO-000009','Canadian Office Products',    'V-00010','Delta Office Products',      '2025-03-15','2025-04-14','CAD', 25300.00, 3300.00,'Net30','K.Williams','Closed',   'CORP'),
     ('PO-000010','Steel Raw Material April',    'V-00005','Pak Steel & Raw Materials',  '2025-04-01','2025-04-08','USD',178250.00,23250.00,'Immediate','J.Smith','Confirmed','CORP'),
 ])
-print("  ✓ po_headers_dynamics (10 rows)")
+print("  po_headers_dynamics (10 rows)")
 
 cur.execute("DELETE FROM po_headers_oracle")
 execute_values(cur, """
@@ -1106,7 +1106,7 @@ execute_values(cur, """
     ('US-10009',1009,'STANDARD','SUP-00010','Delta Office Products',      'CA-MAIN','2025-03-15','CAD', 25300.00,'FINALLY CLOSED','Kate Williams','CA OU','NET30'),
     ('US-10010',1010,'STANDARD','SUP-00005','Pak Steel & Raw Materials',  'PK-MAIN','2025-04-01','USD',178250.00,'OPEN',          'John Smith',   'PK OU','IMMEDIATE'),
 ])
-print("  ✓ po_headers_oracle (10 rows)")
+print("  po_headers_oracle (10 rows)")
 
 cur.execute("DELETE FROM po_headers_erpnext")
 execute_values(cur, """
@@ -1126,7 +1126,7 @@ execute_values(cur, """
     ('PUR-ORD-2025-00009','SUP-00010','Delta Office Products',      '2025-03-15','2025-04-14','CAD', 22000.00, 3300.00, 25300.00,'Closed',   'NMI Industries','Net 30'),
     ('PUR-ORD-2025-00010','SUP-00005','Pak Steel & Raw Materials',  '2025-04-01','2025-04-08','USD',155000.00,23250.00,178250.00,'Submitted','NMI Industries','Immediate'),
 ])
-print("  ✓ po_headers_erpnext (10 rows)")
+print("  po_headers_erpnext (10 rows)")
 
 # ── INVOICES — all 6 ERPs ─────────────────────────────────────────────────────
 cur.execute("DELETE FROM invoices_odoo")
@@ -1147,7 +1147,7 @@ execute_values(cur, """
     ('BILL/2025/00009','Delta Office Products',      '2025-03-22','2025-04-21','DOP-INV-2025-0901','PO00009', 22000.00, 3300.00, 25300.00, 25300.00,'CAD','posted','not_paid'),
     ('BILL/2025/00010','Pak Steel & Raw Materials',  '2025-04-05','2025-04-05','PSR-INV-2025-1001','PO00010',155000.00,23250.00,178250.00,178250.00,'USD','posted','not_paid'),
 ])
-print("  ✓ invoices_odoo (10 rows)")
+print("  invoices_odoo (10 rows)")
 
 cur.execute("DELETE FROM invoices_sap_s4")
 execute_values(cur, """
@@ -1166,7 +1166,7 @@ execute_values(cur, """
     ('5100000009','1000','2025','RE','2025-03-22','2025-03-23','0000100010','DOP-INV-2025-0901', 25300.00,'CAD','2025-04-21','NT30','4500000009'),
     ('5100000010','1000','2025','RE','2025-04-05','2025-04-05','0000100005','PSR-INV-2025-1001',178250.00,'USD','2025-04-05','SOFO','4500000010'),
 ])
-print("  ✓ invoices_sap_s4 (10 rows)")
+print("  invoices_sap_s4 (10 rows)")
 
 cur.execute("DELETE FROM invoices_sap_b1")
 execute_values(cur, """
@@ -1185,7 +1185,7 @@ execute_values(cur, """
     (20009,'2025-03-22','2025-04-21','V-DOP010','Delta Office Products',      'DOP-INV-2025-0901', 25300.00, 3300.00,'CAD','10009','O'),
     (20010,'2025-04-05','2025-04-05','V-PSR005','Pak Steel & Raw Materials',  'PSR-INV-2025-1001',178250.00,23250.00,'USD','10010','O'),
 ])
-print("  ✓ invoices_sap_b1 (10 rows)")
+print("  invoices_sap_b1 (10 rows)")
 
 cur.execute("DELETE FROM invoices_dynamics")
 execute_values(cur, """
@@ -1205,7 +1205,7 @@ execute_values(cur, """
     ('DOP-INV-2025-0901','Canadian Office Products Inv',  'V-00010','Delta Office Products',      '2025-03-22','2025-04-21','PO-000009', 25300.00, 3300.00,'CAD','Net30','Pending'),
     ('PSR-INV-2025-1001','Steel Raw Materials Invoice',   'V-00005','Pak Steel & Raw Materials',  '2025-04-05','2025-04-05','PO-000010',178250.00,23250.00,'USD','Immediate','Pending'),
 ])
-print("  ✓ invoices_dynamics (10 rows)")
+print("  invoices_dynamics (10 rows)")
 
 cur.execute("DELETE FROM invoices_oracle")
 execute_values(cur, """
@@ -1225,7 +1225,7 @@ execute_values(cur, """
     ('DOP-INV-2025-0901',2009,'SUP-00010','Delta Office Products',      'CA-MAIN','2025-03-22','2025-04-21','US-10009', 25300.00, 3300.00,'CAD','UNPAID', 'CA OU'),
     ('PSR-INV-2025-1001',2010,'SUP-00005','Pak Steel & Raw Materials',  'PK-MAIN','2025-04-05','2025-04-05','US-10010',178250.00,23250.00,'USD','UNPAID', 'PK OU'),
 ])
-print("  ✓ invoices_oracle (10 rows)")
+print("  invoices_oracle (10 rows)")
 
 cur.execute("DELETE FROM invoices_erpnext")
 execute_values(cur, """
@@ -1245,7 +1245,7 @@ execute_values(cur, """
     ('ACC-PINV-2025-00009','SUP-00010','Delta Office Products',      '2025-03-22','2025-04-21','DOP-INV-2025-0901','CAD', 22000.00, 3300.00, 25300.00, 25300.00,'Unpaid',  'NMI Industries','PUR-ORD-2025-00009'),
     ('ACC-PINV-2025-00010','SUP-00005','Pak Steel & Raw Materials',  '2025-04-05','2025-04-05','PSR-INV-2025-1001','USD',155000.00,23250.00,178250.00,178250.00,'Overdue', 'NMI Industries','PUR-ORD-2025-00010'),
 ])
-print("  ✓ invoices_erpnext (10 rows)")
+print("  invoices_erpnext (10 rows)")
 
 conn.commit()
 
@@ -1310,7 +1310,7 @@ cur.executemany("""
     VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
 """, erp_registry_rows)
 conn.commit()
-print(f"  ✓ Added {len(erp_registry_rows)} ERP-specific rows to table_registry")
+print(f"  Added {len(erp_registry_rows)} ERP-specific rows to table_registry")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SUMMARY

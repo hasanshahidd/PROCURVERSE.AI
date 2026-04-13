@@ -258,7 +258,7 @@ class DocumentProcessingAgent(BaseAgent):
                 f"Extracted {filled}/{required} fields from "
                 f"'{ctx.get('document_type')}' document."
                 f"{ocr_note} "
-                f"{'⚠ ' + str(len(warnings)) + ' warning(s).' if warnings else 'No warnings.'}"
+                f"{'' + str(len(warnings)) + ' warning(s).' if warnings else 'No warnings.'}"
             )
 
         await self._log_action(

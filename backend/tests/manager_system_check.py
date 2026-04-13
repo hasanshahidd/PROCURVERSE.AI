@@ -19,7 +19,7 @@ conn = psycopg2.connect(os.getenv("DATABASE_URL"))
 cur = conn.cursor(cursor_factory=RealDictCursor)
 
 # 1. RECENT PR WORKFLOWS (What PRs are in the system)
-print("\n📋 1. RECENT PR WORKFLOWS IN SYSTEM:")
+print("\n1. RECENT PR WORKFLOWS IN SYSTEM:")
 print("-" * 80)
 cur.execute("""
     SELECT 
@@ -44,10 +44,10 @@ if workflows:
         print(f"  Status: {w['workflow_status']}")
         print(f"  Created: {w['created_at']}")
 else:
-    print("  📭 No workflows found")
+    print("  No workflows found")
 
 # 2. PENDING APPROVALS FOR MIKE MANAGER
-print("\n\n🔔 2. MY PENDING APPROVALS (Mike Manager):")
+print("\n\n2. MY PENDING APPROVALS (Mike Manager):")
 print("-" * 80)
 cur.execute("""
     SELECT 
@@ -66,16 +66,16 @@ cur.execute("""
 pending = cur.fetchall()
 if pending:
     for p in pending:
-        print(f"\n  ✋ PR: {p['pr_number']}")
+        print(f"\n  PR: {p['pr_number']}")
         print(f"     Requester: {p['requester_name']} ({p['department']})")
         print(f"     Amount: ${p['total_amount']:,.2f}")
         print(f"     My Level: {p['approval_level']} (Manager)")
-        print(f"     🔴 STATUS: WAITING FOR MY APPROVAL")
+        print(f"     STATUS: WAITING FOR MY APPROVAL")
 else:
-    print("  ✅ No pending approvals - inbox clear!")
+    print("  No pending approvals - inbox clear!")
 
 # 3. MY APPROVAL STATISTICS  
-print("\n\n📊 3. MY APPROVAL STATISTICS:")
+print("\n\n3. MY APPROVAL STATISTICS:")
 print("-" * 80)
 cur.execute("""
     SELECT 
@@ -93,7 +93,7 @@ if stats:
         print(f"  {stat['status'].upper()}: {stat['count']} items (${stat['total_value']:,.2f})")
 
 # 4. APPROVAL CHAIN CONFIGURATION
-print("\n\n🔗 4. APPROVAL CHAIN (How PRs flow):")
+print("\n\n4. APPROVAL CHAIN (How PRs flow):")
 print("-" * 80)
 cur.execute("""
     SELECT DISTINCT
@@ -112,10 +112,10 @@ if chain:
         level_name = ["", "Manager", "Director", "VP/CFO"][c['approval_level']]
         print(f"    Level {c['approval_level']} → {level_name}: {c['approver_name']} (${c['budget_threshold']:,.0f})")
 else:
-    print("  ⚠️ No approval chains configured")
+    print("  ️ No approval chains configured")
 
 # 5. AGENTIC SYSTEM STATUS
-print("\n\n🤖 5. AGENTIC SYSTEM (AI Agents Working):")
+print("\n\n5. AGENTIC SYSTEM (AI Agents Working):")
 print("-" * 80)
 cur.execute("""
     SELECT 
@@ -138,13 +138,13 @@ if agents:
         print(f"  {agent['agent_name']:<30} {agent['actions']:<10} "
               f"{success_rate:>6.1f}% {agent['avg_time_ms']:>10.0f}ms")
 else:
-    print("  📭 No recent agent activity")
+    print("  No recent agent activity")
 
 cur.close()
 conn.close()
 
 print("\n" + "="*80)
-print("\n💡 WHAT YOU CAN DO AS PROJECT MANAGER:")
+print("\nWHAT YOU CAN DO AS PROJECT MANAGER:")
 print("\n  1. Submit new PR → POST /api/agentic/execute")
 print("     Request: 'Create PR for Dell Server, $17K IT'")
 print("\n  2. View your approvals → Frontend: /my-approvals")

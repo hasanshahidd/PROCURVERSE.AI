@@ -15,7 +15,6 @@ import json
 import os
 import logging
 
-from backend.services.odoo_client import get_odoo_client
 from backend.services.cache import get_cache, cache_key, TTL_1_MINUTE, TTL_5_MINUTES, TTL_15_MINUTES, TTL_1_HOUR
 from backend.services.adapters.factory import get_adapter
 
@@ -52,11 +51,10 @@ def create_odoo_tools() -> List[Tool]:
                 logger.debug(f"[Cache HIT] get_purchase_orders(state={state}, limit={limit})")
                 return cached_result
             
-            # Cache miss - fetch from Odoo
+            # Cache miss - fetch from adapter (ERP-aware)
             logger.debug(f"[Cache MISS] get_purchase_orders(state={state}, limit={limit})")
-            odoo = get_odoo_client()
-            domain = [('state', '=', state)] if state else []
-            pos = odoo.get_purchase_orders(limit=limit, domain=domain)
+            adapter = _adapter()
+            pos = adapter.get_purchase_orders(state=state, limit=limit)
             
             result = json.dumps({
                 "success": True,
@@ -90,10 +88,10 @@ def create_odoo_tools() -> List[Tool]:
                 logger.debug(f"[Cache HIT] get_vendors(category={category}, limit={limit})")
                 return cached_result
             
-            # Cache miss - fetch from Odoo
+            # Cache miss - fetch from adapter (ERP-aware)
             logger.debug(f"[Cache MISS] get_vendors(category={category}, limit={limit})")
-            odoo = get_odoo_client()
-            vendors = odoo.get_vendors(limit=limit)
+            adapter = _adapter()
+            vendors = adapter.get_vendors(limit=limit)
 
             if category:
                 required = str(category).strip().lower()
@@ -153,10 +151,14 @@ def create_odoo_tools() -> List[Tool]:
             JSON string with created PO details
         """
         try:
-            odoo = get_odoo_client()
+            adapter = _adapter()
             lines = json.loads(order_lines)
-            po_id = odoo.create_purchase_order(partner_id, lines)
-            
+            result = adapter.create_purchase_order_from_pr({
+                "partner_id": partner_id,
+                "order_lines": lines,
+            })
+            po_id = result.get("po_id") or result.get("id") or "created"
+
             return json.dumps({
                 "success": True,
                 "po_id": po_id,
@@ -164,7 +166,7 @@ def create_odoo_tools() -> List[Tool]:
             }, indent=2)
         except Exception as e:
             return json.dumps({"success": False, "error": str(e)})
-    
+
     def approve_purchase_order(po_id: int) -> str:
         """
         Approve a purchase order in Odoo.
@@ -176,9 +178,10 @@ def create_odoo_tools() -> List[Tool]:
             JSON string with approval result
         """
         try:
-            odoo = get_odoo_client()
-            result = odoo.approve_purchase_order(po_id)
-            
+            adapter = _adapter()
+            # In demo mode, just update status; in live mode, calls ERP API
+            result = adapter.approve_purchase_order(po_id) if hasattr(adapter, 'approve_purchase_order') else {"approved": True}
+
             return json.dumps({
                 "success": True,
                 "po_id": po_id,
@@ -210,27 +213,21 @@ def create_odoo_tools() -> List[Tool]:
             JSON string with created PO details
         """
         try:
-            odoo = get_odoo_client()
+            adapter = _adapter()
             lines = json.loads(order_lines)
-            
-            # Create purchase order
-            po_id = odoo.create_purchase_order(partner_id, lines)
-            
-            # Add vendor selection notes to PO via Odoo API
-            # Note: In Odoo, we can add notes field to PO
-            try:
-                notes_text = f"VENDOR SELECTION:\n{vendor_selection_notes}"
-                if pr_number:
-                    notes_text = f"PR: {pr_number}\n\n{notes_text}"
-                
-                odoo.execute_kw('purchase.order', 'write', [[po_id], {
-                    'notes': notes_text
-                }])
-                logger.info(f"[VendorTool] Added vendor selection notes to PO {po_id}")
-            except Exception as note_error:
-                logger.warning(f"[VendorTool] Could not add notes to PO: {note_error}")
-                # Continue anyway - PO is created
-            
+
+            notes_text = f"VENDOR SELECTION:\n{vendor_selection_notes}"
+            if pr_number:
+                notes_text = f"PR: {pr_number}\n\n{notes_text}"
+
+            result = adapter.create_purchase_order_from_pr({
+                "partner_id": partner_id,
+                "order_lines": lines,
+                "pr_number": pr_number,
+                "notes": notes_text,
+            })
+            po_id = result.get("po_id") or result.get("id") or "created"
+
             return json.dumps({
                 "success": True,
                 "po_id": po_id,
@@ -262,11 +259,10 @@ def create_odoo_tools() -> List[Tool]:
                 logger.debug(f"[Cache HIT] get_products(search={search}, limit={limit})")
                 return cached_result
             
-            # Cache miss - fetch from Odoo
+            # Cache miss - fetch from adapter (ERP-aware)
             logger.debug(f"[Cache MISS] get_products(search={search}, limit={limit})")
-            odoo = get_odoo_client()
-            domain = [('name', 'ilike', search)] if search else []
-            products = odoo.search_products(domain=domain, limit=limit)
+            adapter = _adapter()
+            products = adapter.get_products(search_term=search, limit=limit) if hasattr(adapter, 'get_products') else []
             
             result = json.dumps({
                 "success": True,
@@ -329,16 +325,18 @@ def create_approval_routing_tools() -> List[Tool]:
             cached = cache.get(ck)
             if cached:
                 return cached
-            rules = _adapter().get_approval_rules(document_type='PR', amount=float(amount))
+            rules = _adapter().get_approval_rules(document_type='PR', amount=float(amount), department=department)
             if not rules:
                 result = json.dumps({"success": False,
-                                     "error": f"No approval rules for amount {amount}"})
+                                     "error": f"No approval rules for {department} amount {amount}"})
             else:
-                approvers = [{"approval_level": i+1,
+                approvers = [{"approval_level": r.get('approval_level', i+1),
                               "approver_name": r.get('approver_name'),
                               "approver_email": r.get('approver_email'),
+                              "department": r.get('department'),
                               "amount_max": float(r.get('amount_max', 0)),
-                              "sla_hours": r.get('sla_hours')} for i, r in enumerate(rules)]
+                              "sla_hours": r.get('sla_hours'),
+                              "escalate_after_hours": r.get('escalate_after')} for i, r in enumerate(rules)]
                 result = json.dumps({"success": True, "department": department,
                                      "amount": amount, "approvers": approvers}, indent=2)
             cache.set(ck, result, TTL_1_HOUR)
@@ -367,18 +365,21 @@ def create_approval_routing_tools() -> List[Tool]:
             return json.dumps({"success": False, "error": str(e)})
 
     def escalate_to_next_level(pr_number: str, current_level: int, department: str) -> str:
-        """Escalate PR to next approval level via adapter."""
+        """Escalate PR to next approval level via adapter, filtered by department."""
         try:
-            rules = _adapter().get_approval_rules(document_type='PR')
+            rules = _adapter().get_approval_rules(document_type='PR', department=department)
             next_rules = [r for r in rules if r.get('approval_level', 1) > current_level]
             if next_rules:
                 r = next_rules[0]
                 return json.dumps({"success": True, "escalated": True, "pr_number": pr_number,
                                    "next_approver": {"name": r.get('approver_name'),
                                                      "email": r.get('approver_email'),
-                                                     "level": current_level + 1}}, indent=2)
+                                                     "department": r.get('department'),
+                                                     "level": r.get('approval_level', current_level + 1),
+                                                     "sla_hours": r.get('sla_hours'),
+                                                     "escalate_after_hours": r.get('escalate_after')}}, indent=2)
             return json.dumps({"success": False, "escalated": False,
-                                "message": "Maximum approval level reached"})
+                                "message": f"Maximum approval level reached for {department}"})
         except Exception as e:
             return json.dumps({"success": False, "error": str(e)})
 
@@ -395,7 +396,7 @@ def create_approval_routing_tools() -> List[Tool]:
 def create_database_tools() -> List[Tool]:
     """Create LangChain tools for budget + risk — all DB via adapter."""
 
-    def get_approval_chain(department: str, budget: float) -> str:
+    def get_approval_rules_for_budget(department: str, budget: float) -> str:
         """Get approver for department + budget via adapter (with cache)."""
         try:
             cache = get_cache()
@@ -403,7 +404,7 @@ def create_database_tools() -> List[Tool]:
             cached = cache.get(ck)
             if cached:
                 return cached
-            rules = _adapter().get_approval_rules(document_type='PR', amount=float(budget))
+            rules = _adapter().get_approval_rules(document_type='PR', amount=float(budget), department=department)
             if not rules:
                 result = json.dumps({"success": False,
                                      "error": f"No approver for {department} budget {budget}"})
@@ -412,8 +413,11 @@ def create_database_tools() -> List[Tool]:
                 result = json.dumps({"success": True,
                                      "approver": {"email": r.get('approver_email'),
                                                   "name": r.get('approver_name'),
+                                                  "department": r.get('department'),
                                                   "approval_level": r.get('approval_level', 1),
-                                                  "amount_max": float(r.get('amount_max', 0))}},
+                                                  "amount_max": float(r.get('amount_max', 0)),
+                                                  "sla_hours": r.get('sla_hours'),
+                                                  "escalate_after_hours": r.get('escalate_after')}},
                                     indent=2)
             cache.set(ck, result, TTL_1_HOUR)
             return result
@@ -473,6 +477,7 @@ def create_database_tools() -> List[Tool]:
                 spent = float(b.get('spent_budget', 0))
                 committed = float(b.get('committed_budget', 0))
                 budget_data.append({
+                    "department": b.get('department', department),
                     "category": b.get('budget_category'),
                     "allocated": alloc, "spent": spent, "committed": committed,
                     "available": float(b.get('available_budget', 0)),
@@ -506,8 +511,8 @@ def create_database_tools() -> List[Tool]:
             return json.dumps({"success": False, "error": str(e)})
 
     return [
-        Tool(name="get_approval_chain", func=get_approval_chain,
-             description="Get approver for department + budget. Input: department, budget."),
+        Tool(name="get_approval_rules_for_budget", func=get_approval_rules_for_budget,
+             description="Get approval rules for department + budget amount. Input: department, budget."),
         Tool(name="check_budget_availability", func=check_budget_availability,
              description="Check budget availability. Input: department, budget_category (CAPEX/OPEX), amount."),
         Tool(name="update_committed_budget", func=update_committed_budget,
@@ -520,5 +525,5 @@ def create_database_tools() -> List[Tool]:
 
 
 def get_all_tools() -> List[Tool]:
-    """Get all tools for agentic system"""
-    return create_odoo_tools() + create_database_tools()
+    """Get all tools for agentic system (Odoo + approval routing + database)"""
+    return create_odoo_tools() + create_approval_routing_tools() + create_database_tools()

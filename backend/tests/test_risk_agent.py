@@ -42,14 +42,14 @@ async def test_low_risk_scenario():
     result = await agent.execute(context)
     
     risk_data = result.get("result", {})
-    print(f"\n✅ Risk Assessment Complete!")
+    print(f"\nRisk Assessment Complete!")
     print(f"   Risk Score: {risk_data.get('risk_score')}/100")
     print(f"   Risk Level: {risk_data.get('risk_level')}")
     print(f"   Status: {risk_data.get('status')}")
     print(f"   Can Proceed: {risk_data.get('can_proceed')}")
     
     breakdown = risk_data.get('breakdown', {})
-    print(f"\n📊 Risk Breakdown:")
+    print(f"\nRisk Breakdown:")
     print(f"   Vendor Risk: {breakdown.get('vendor_risk', {}).get('score')}/100 (30% weight)")
     print(f"   Financial Risk: {breakdown.get('financial_risk', {}).get('score')}/100 (30% weight)")
     print(f"   Compliance Risk: {breakdown.get('compliance_risk', {}).get('score')}/100 (25% weight)")
@@ -57,7 +57,7 @@ async def test_low_risk_scenario():
     
     mitigations = risk_data.get('mitigations', [])
     if mitigations:
-        print(f"\n💡 Recommended Mitigations:")
+        print(f"\nRecommended Mitigations:")
         for i, mitigation in enumerate(mitigations[:3], 1):
             print(f"   {i}. {mitigation}")
 
@@ -87,7 +87,7 @@ async def test_high_risk_scenario():
     result = await agent.execute(context)
     
     risk_data = result.get("result", {})
-    print(f"\n⚠️  Risk Assessment Complete!")
+    print(f"\n️  Risk Assessment Complete!")
     print(f"   Risk Score: {risk_data.get('risk_score')}/100")
     print(f"   Risk Level: {risk_data.get('risk_level')}")
     print(f"   Status: {risk_data.get('status')}")
@@ -95,7 +95,7 @@ async def test_high_risk_scenario():
     print(f"   Requires Human Review: {risk_data.get('requires_human_review')}")
     
     breakdown = risk_data.get('breakdown', {})
-    print(f"\n📊 Risk Breakdown:")
+    print(f"\nRisk Breakdown:")
     print(f"   Vendor Risk: {breakdown.get('vendor_risk', {}).get('score')}/100")
     for concern in breakdown.get('vendor_risk', {}).get('concerns', [])[:2]:
         print(f"      • {concern}")
@@ -114,13 +114,13 @@ async def test_high_risk_scenario():
     
     mitigations = risk_data.get('mitigations', [])
     if mitigations:
-        print(f"\n💡 Top Mitigations Required:")
+        print(f"\nTop Mitigations Required:")
         for i, mitigation in enumerate(mitigations, 1):
             print(f"   {i}. {mitigation}")
     
     actions = risk_data.get('recommended_actions', [])
     if actions:
-        print(f"\n📋 Recommended Actions:")
+        print(f"\nRecommended Actions:")
         for i, action in enumerate(actions[:3], 1):
             print(f"   {i}. {action}")
 
@@ -151,14 +151,14 @@ async def test_medium_risk_scenario():
     result = await agent.execute(context)
     
     risk_data = result.get("result", {})
-    print(f"\n⚡ Risk Assessment Complete!")
+    print(f"\nRisk Assessment Complete!")
     print(f"   Risk Score: {risk_data.get('risk_score')}/100")
     print(f"   Risk Level: {risk_data.get('risk_level')}")
     print(f"   Status: {risk_data.get('status')}")
     
     mitigations = risk_data.get('mitigations', [])
     if mitigations:
-        print(f"\n💡 Recommended Mitigations:")
+        print(f"\nRecommended Mitigations:")
         for i, mitigation in enumerate(mitigations[:3], 1):
             print(f"   {i}. {mitigation}")
 
@@ -186,11 +186,11 @@ async def test_orchestrator_integration():
     
     result = await orch.execute(context)
     
-    print(f"\n✅ Orchestrator routed to: {result.get('agent')}")
+    print(f"\nOrchestrator routed to: {result.get('agent')}")
     print(f"   Status: {result.get('status')}")
     
     decision = result.get('decision', {})
-    print(f"\n📋 Decision:")
+    print(f"\nDecision:")
     print(f"   Action: {decision.get('action')}")
     print(f"   Confidence: {decision.get('confidence')}")
     print(f"   Reasoning: {decision.get('reasoning')[:150]}...")
@@ -198,7 +198,7 @@ async def test_orchestrator_integration():
 
 async def main():
     """Run all tests"""
-    print("\n🚀 RISK ASSESSMENT AGENT - COMPREHENSIVE TEST SUITE")
+    print("\nRISK ASSESSMENT AGENT - COMPREHENSIVE TEST SUITE")
     print("=" * 70)
     
     try:
@@ -208,18 +208,18 @@ async def main():
         await test_orchestrator_integration()
         
         print("\n\n" + "=" * 70)
-        print("✅ ALL TESTS PASSED - RISK AGENT IS OPERATIONAL!")
+        print("ALL TESTS PASSED - RISK AGENT IS OPERATIONAL!")
         print("=" * 70)
         print("\nRisk Agent Features:")
-        print("  ✅ Multi-dimensional risk scoring (Vendor, Financial, Compliance, Operational)")
-        print("  ✅ 4 risk levels (LOW/MEDIUM/HIGH/CRITICAL)")
-        print("  ✅ Automated mitigation recommendations")
-        print("  ✅ Confidence-based human escalation")
-        print("  ✅ Orchestrator integration")
-        print("  ✅ Detailed risk breakdowns")
+        print("  Multi-dimensional risk scoring (Vendor, Financial, Compliance, Operational)")
+        print("  4 risk levels (LOW/MEDIUM/HIGH/CRITICAL)")
+        print("  Automated mitigation recommendations")
+        print("  Confidence-based human escalation")
+        print("  Orchestrator integration")
+        print("  Detailed risk breakdowns")
         
     except Exception as e:
-        print(f"\n❌ TEST FAILED: {e}")
+        print(f"\nTEST FAILED: {e}")
         import traceback
         traceback.print_exc()
 

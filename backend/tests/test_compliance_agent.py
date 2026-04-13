@@ -58,7 +58,7 @@ async def test_fully_compliant_pr():
     assert result["result"]["compliance_score"] >= 90, "Fully compliant PR should score >=90"
     assert result["result"]["action"] == "approve", "Compliant PR should be approved"
     
-    print(f"\n✅ Test 1 PASSED: Compliance score {result['result']['compliance_score']}/100 - APPROVED")
+    print(f"\nTest 1 PASSED: Compliance score {result['result']['compliance_score']}/100 - APPROVED")
     return result
 
 
@@ -93,11 +93,11 @@ async def test_exceeds_budget():
     assert result["status"] == "success", "Agent execution should succeed"
     # Should have budget violation if exceeds available
     violations = result["result"]["violations"]
-    print(f"\n⚠️ Violations found: {len(violations)}")
+    print(f"\n️ Violations found: {len(violations)}")
     for v in violations:
         print(f"  - {v}")
     
-    print("\n✅ Test 2 PASSED: Budget issues flagged correctly")
+    print("\nTest 2 PASSED: Budget issues flagged correctly")
     return result
 
 
@@ -133,7 +133,7 @@ async def test_non_preferred_vendor():
     
     # Should have warnings about non-preferred vendor
     warnings = result["result"]["warnings"]
-    print(f"\n⚠️ Warnings found: {len(warnings)}")
+    print(f"\n️ Warnings found: {len(warnings)}")
     for w in warnings:
         print(f"  - {w}")
     
@@ -141,7 +141,7 @@ async def test_non_preferred_vendor():
     score = result["result"]["compliance_score"]
     assert 70 <= score < 100, f"Non-preferred vendor should reduce score to 70-99 range, got {score}"
     
-    print(f"\n✅ Test 3 PASSED: Non-preferred vendor warning issued (score: {score}/100)")
+    print(f"\nTest 3 PASSED: Non-preferred vendor warning issued (score: {score}/100)")
     return result
 
 
@@ -180,7 +180,7 @@ async def test_insufficient_justification():
     justification_warning = any("justification" in w.lower() for w in warnings)
     assert justification_warning, "Should warn about insufficient justification"
     
-    print("\n✅ Test 4 PASSED: Insufficient justification flagged")
+    print("\nTest 4 PASSED: Insufficient justification flagged")
     return result
 
 
@@ -220,9 +220,9 @@ async def test_critical_urgency_no_justification():
     assert critical_violation, "Should flag critical urgency without justification as violation"
     
     score = result["result"]["compliance_score"]
-    print(f"\n❌ Compliance score: {score}/100 - Critical violation detected")
+    print(f"\nCompliance score: {score}/100 - Critical violation detected")
     
-    print("\n✅ Test 5 PASSED: Critical urgency violation caught")
+    print("\nTest 5 PASSED: Critical urgency violation caught")
     return result
 
 
@@ -260,9 +260,9 @@ async def test_large_opex_warning():
     warnings = result["result"]["warnings"]
     opex_warning = any("opex" in w.lower() and "capital" in w.lower() for w in warnings)
     if opex_warning:
-        print("\n⚠️ OPEX/CAPEX classification warning detected (expected)")
+        print("\n️ OPEX/CAPEX classification warning detected (expected)")
     
-    print("\n✅ Test 6 PASSED: Budget category validation working")
+    print("\nTest 6 PASSED: Budget category validation working")
     return result
 
 
@@ -300,9 +300,9 @@ async def test_exceeds_vp_authority():
     violations = result["result"]["violations"]
     authority_violation = any("vp" in v.lower() and "authority" in v.lower() for v in violations)
     if authority_violation:
-        print("\n⚠️ VP authority limit exceeded (expected violation)")
+        print("\n️ VP authority limit exceeded (expected violation)")
     
-    print("\n✅ Test 7 PASSED: Spending limit enforcement working")
+    print("\nTest 7 PASSED: Spending limit enforcement working")
     return result
 
 
@@ -333,18 +333,18 @@ async def run_all_tests():
             await test_func()
             results["passed"] += 1
         except AssertionError as e:
-            print(f"\n❌ {test_name} FAILED: {e}")
+            print(f"\n{test_name} FAILED: {e}")
             results["failed"] += 1
         except Exception as e:
-            print(f"\n❌ {test_name} ERROR: {e}")
+            print(f"\n{test_name} ERROR: {e}")
             results["failed"] += 1
     
     print("\n" + "="*100)
     print("TEST SUMMARY")
     print("="*100)
     print(f"Total Tests: {results['total']}")
-    print(f"✅ Passed: {results['passed']}")
-    print(f"❌ Failed: {results['failed']}")
+    print(f"Passed: {results['passed']}")
+    print(f"Failed: {results['failed']}")
     print(f"Success Rate: {(results['passed']/results['total'])*100:.1f}%")
     print("="*100)
     

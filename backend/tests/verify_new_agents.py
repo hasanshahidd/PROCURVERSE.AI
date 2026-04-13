@@ -36,12 +36,12 @@ async def main():
         }
         
         result = await price_agent.execute(context)
-        print(f"   ✅ PriceAnalysisAgent executed successfully")
+        print(f"   PriceAnalysisAgent executed successfully")
         print(f"   Status: {result.get('status')}")
         print(f"   Confidence: {result.get('confidence', 0):.2f}")
         
     except Exception as e:
-        print(f"   ❌ PriceAnalysisAgent ERROR: {e}")
+        print(f"   PriceAnalysisAgent ERROR: {e}")
         return False
     
     # Test 2: ComplianceCheckAgent
@@ -64,7 +64,7 @@ async def main():
         }
         
         result = await compliance_agent.execute(context)
-        print(f"   ✅ ComplianceCheckAgent executed successfully")
+        print(f"   ComplianceCheckAgent executed successfully")
         print(f"   Status: {result.get('status')}")
         print(f"   Confidence: {result.get('confidence', 0):.2f}")
         
@@ -74,11 +74,11 @@ async def main():
             print(f"   Compliance Level: {comp_result.get('compliance_level', 'N/A')}")
         
     except Exception as e:
-        print(f"   ❌ ComplianceCheckAgent ERROR: {e}")
+        print(f"   ComplianceCheckAgent ERROR: {e}")
         return False
     
     print("\n" + "="*80)
-    print("✅ VERIFICATION COMPLETE - Both agents are FUNCTIONAL")
+    print("VERIFICATION COMPLETE - Both agents are FUNCTIONAL")
     print("="*80)
     print("\nNote: Agents may request human approval in test env due to limited data,")
     print("but this demonstrates correct decision-making under uncertainty!")

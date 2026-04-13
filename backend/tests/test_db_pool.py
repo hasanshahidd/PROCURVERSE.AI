@@ -25,7 +25,7 @@ from backend.services.db_pool import (
 )
 
 # Test database URL
-DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres:YourStr0ng!Pass@localhost:5433/odoo_procurement_demo")
+DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres:postgres@localhost:5433/odoo_procurement_demo")
 
 
 class TestConnectionPool:
@@ -64,9 +64,9 @@ class TestConnectionPool:
         assert stats["idle_connections"] == 3, "Should have 3 idle connections"
         assert stats["active_connections"] == 0, "Should have 0 active connections"
         
-        print(f"  ✅ Pool initialized: {stats['config']['minconn']}-{stats['config']['maxconn']} connections")
-        print(f"  ✅ Initial state: {stats['idle_connections']} idle, {stats['active_connections']} active")
-        print(f"  ✅ Connection timeout: {stats['config']['connection_timeout']}s")
+        print(f"  Pool initialized: {stats['config']['minconn']}-{stats['config']['maxconn']} connections")
+        print(f"  Initial state: {stats['idle_connections']} idle, {stats['active_connections']} active")
+        print(f"  Connection timeout: {stats['config']['connection_timeout']}s")
     
     def test_02_connection_acquisition_and_return(self):
         """TEST 2: Connection Acquisition and Return"""
@@ -79,7 +79,7 @@ class TestConnectionPool:
         
         # Get initial stats
         stats_before = get_pool_stats()
-        print(f"  📊 Before: {stats_before['active_connections']} active, {stats_before['idle_connections']} idle")
+        print(f"  Before: {stats_before['active_connections']} active, {stats_before['idle_connections']} idle")
         
         # Acquire connection
         conn = get_db_connection()
@@ -89,7 +89,7 @@ class TestConnectionPool:
         stats_after_get = get_pool_stats()
         assert stats_after_get["active_connections"] == 1, "Should have 1 active connection"
         assert stats_after_get["total_acquired"] == 1, "Should have acquired 1 connection"
-        print(f"  ✅ After acquisition: {stats_after_get['active_connections']} active, {stats_after_get['idle_connections']} idle")
+        print(f"  After acquisition: {stats_after_get['active_connections']} active, {stats_after_get['idle_connections']} idle")
         
         # Return connection
         return_db_connection(conn)
@@ -98,11 +98,11 @@ class TestConnectionPool:
         stats_after_return = get_pool_stats()
         assert stats_after_return["active_connections"] == 0, "Should have 0 active connections"
         assert stats_after_return["total_returned"] == 1, "Should have returned 1 connection"
-        print(f"  ✅ After return: {stats_after_return['active_connections']} active, {stats_after_return['idle_connections']} idle")
+        print(f"  After return: {stats_after_return['active_connections']} active, {stats_after_return['idle_connections']} idle")
         
         # Verify no leaks
         assert stats_after_return["total_acquired"] == stats_after_return["total_returned"], "No connection leaks"
-        print(f"  ✅ No leaks: {stats_after_return['total_acquired']} acquired = {stats_after_return['total_returned']} returned")
+        print(f"  No leaks: {stats_after_return['total_acquired']} acquired = {stats_after_return['total_returned']} returned")
     
     def test_03_connection_reuse(self):
         """TEST 3: Connection Reuse (No New Connections Created)"""
@@ -134,14 +134,14 @@ class TestConnectionPool:
             assert result == (1,), "Query should return 1"
             
             return_db_connection(conn)
-            print(f"  🔄 Iteration {i+1}: Connection ID {conn_id} used and returned")
+            print(f"  Iteration {i+1}: Connection ID {conn_id} used and returned")
         
         stats = get_pool_stats()
         acquired_count = stats['total_acquired'] - initial_acquired
         returned_count = stats['total_returned'] - initial_returned
         
-        print(f"\n  📊 Final stats: {acquired_count} acquired, {returned_count} returned")
-        print(f"  ✅ Connection reuse working (all connections returned to pool)")
+        print(f"\n  Final stats: {acquired_count} acquired, {returned_count} returned")
+        print(f"  Connection reuse working (all connections returned to pool)")
         
         # Verify acquisitions and returns match
         assert acquired_count == iterations, f"Should have acquired {iterations} times (actual: {acquired_count})"
@@ -161,25 +161,25 @@ class TestConnectionPool:
         for i in range(5):
             conn = get_db_connection()
             connections.append(conn)
-            print(f"  ✅ Acquired connection {i+1}")
+            print(f"  Acquired connection {i+1}")
         
         # Check stats
         stats_active = get_pool_stats()
         assert stats_active["active_connections"] == 5, "Should have 5 active connections"
-        print(f"\n  📊 Active connections: {stats_active['active_connections']}")
-        print(f"  📊 Utilization: {stats_active['utilization_percent']:.1f}%")
+        print(f"\n  Active connections: {stats_active['active_connections']}")
+        print(f"  Utilization: {stats_active['utilization_percent']:.1f}%")
         
         # Return all connections
         for i, conn in enumerate(connections):
             return_db_connection(conn)
-            print(f"  🔄 Returned connection {i+1}")
+            print(f"  Returned connection {i+1}")
         
         # Check final stats
         stats_final = get_pool_stats()
         assert stats_final["active_connections"] == 0, "Should have 0 active connections"
         assert stats_final["total_acquired"] == stats_final["total_returned"], "No leaks"
-        print(f"\n  ✅ All connections returned successfully")
-        print(f"  ✅ No leaks: {stats_final['total_acquired']} acquired = {stats_final['total_returned']} returned")
+        print(f"\n  All connections returned successfully")
+        print(f"  No leaks: {stats_final['total_acquired']} acquired = {stats_final['total_returned']} returned")
     
     def test_05_pool_exhaustion_handling(self):
         """TEST 5: Pool Exhaustion Handling"""
@@ -195,30 +195,30 @@ class TestConnectionPool:
         for i in range(3):
             conn = get_db_connection()
             connections.append(conn)
-            print(f"  ✅ Acquired connection {i+1}/3")
+            print(f"  Acquired connection {i+1}/3")
         
         stats_full = get_pool_stats()
-        print(f"\n  📊 Pool full: {stats_full['active_connections']}/{stats_full['config']['maxconn']} connections used")
-        print(f"  📊 Utilization: {stats_full['utilization_percent']:.1f}%")
+        print(f"\n  Pool full: {stats_full['active_connections']}/{stats_full['config']['maxconn']} connections used")
+        print(f"  Utilization: {stats_full['utilization_percent']:.1f}%")
         assert stats_full["utilization_percent"] == 100.0, "Pool should be at 100% utilization"
         
         # Return one connection to free up space
         return_db_connection(connections[0])
         connections = connections[1:]
-        print(f"\n  🔄 Returned 1 connection, freeing up space")
+        print(f"\n  Returned 1 connection, freeing up space")
         
         # Acquire another (should succeed now)
         conn = get_db_connection()
         connections.append(conn)
-        print(f"  ✅ Successfully acquired connection after freeing space")
+        print(f"  Successfully acquired connection after freeing space")
         
         # Clean up
         for conn in connections:
             return_db_connection(conn)
         
         stats_final = get_pool_stats()
-        print(f"\n  ✅ Pool exhaustion handled correctly")
-        print(f"  ✅ Final: {stats_final['active_connections']} active, no leaks")
+        print(f"\n  Pool exhaustion handled correctly")
+        print(f"  Final: {stats_final['active_connections']} active, no leaks")
     
     def test_06_health_check(self):
         """TEST 6: Pool Health Check"""
@@ -237,9 +237,9 @@ class TestConnectionPool:
         assert health["error"] is None, "Should have no errors"
         assert health["timestamp"] is not None, "Should have timestamp"
         
-        print(f"  ✅ Health check passed")
-        print(f"  ✅ Pool status: {'HEALTHY' if health['healthy'] else 'UNHEALTHY'}")
-        print(f"  ✅ Timestamp: {health['timestamp']}")
+        print(f"  Health check passed")
+        print(f"  Pool status: {'HEALTHY' if health['healthy'] else 'UNHEALTHY'}")
+        print(f"  Timestamp: {health['timestamp']}")
     
     def test_07_statistics_tracking(self):
         """TEST 7: Statistics Tracking"""
@@ -255,7 +255,7 @@ class TestConnectionPool:
         conn2 = get_db_connection()
         
         stats_with_active = get_pool_stats()
-        print(f"  📊 With 2 active: {stats_with_active['active_connections']} active")
+        print(f"  With 2 active: {stats_with_active['active_connections']} active")
         
         return_db_connection(conn1)
         return_db_connection(conn2)
@@ -271,7 +271,7 @@ class TestConnectionPool:
         assert "failures" in stats, "Should track failures"
         assert "utilization_percent" in stats, "Should track utilization"
         
-        print(f"\n  ✅ Statistics tracked:")
+        print(f"\n  Statistics tracked:")
         print(f"     - Total acquired: {stats['total_acquired']}")
         print(f"     - Total returned: {stats['total_returned']}")
         print(f"     - Active: {stats['active_connections']}")
@@ -294,13 +294,13 @@ class TestConnectionPool:
                 cur.execute("SELECT COUNT(*) as count FROM approval_chains")
                 result = cur.fetchone()
                 count = result['count']
-                print(f"  ✅ Context manager executed query successfully")
-                print(f"  ✅ Found {count} records in approval_chains table")
+                print(f"  Context manager executed query successfully")
+                print(f"  Found {count} records in approval_chains table")
             
             # Verify connection was returned
             stats = get_pool_stats()
             assert stats["active_connections"] == 0, "Connection should be returned after context manager"
-            print(f"  ✅ Connection automatically returned to pool")
+            print(f"  Connection automatically returned to pool")
             
         except Exception as e:
             pytest.fail(f"Context manager failed: {e}")
@@ -309,7 +309,7 @@ class TestConnectionPool:
 def run_tests():
     """Run all tests"""
     print("\n" + "="*80)
-    print("🧪 FIX #5: DATABASE CONNECTION POOL TEST SUITE")
+    print("FIX #5: DATABASE CONNECTION POOL TEST SUITE")
     print("="*80)
     print("Testing connection pooling with health checks and statistics")
     print("="*80 + "\n")
@@ -335,18 +335,18 @@ def run_tests():
             test_func()
             test_class.teardown_method()
             passed += 1
-            print(f"\n✅ TEST {i} PASSED: {test_name}")
+            print(f"\nTEST {i} PASSED: {test_name}")
         except Exception as e:
             failed += 1
-            print(f"\n❌ TEST {i} FAILED: {test_name}")
+            print(f"\nTEST {i} FAILED: {test_name}")
             print(f"   Error: {str(e)}")
     
     print("\n" + "="*80)
-    print(f"📊 TEST RESULTS: {passed}/{len(tests)} tests passed")
+    print(f"TEST RESULTS: {passed}/{len(tests)} tests passed")
     if failed == 0:
-        print("✅ ALL TESTS PASSED!")
+        print("ALL TESTS PASSED!")
     else:
-        print(f"❌ {failed} tests failed")
+        print(f"{failed} tests failed")
     print("="*80 + "\n")
     
     return failed == 0

@@ -41,13 +41,13 @@ def check_database_tables():
         for table in tables_to_check:
             cur.execute(f"SELECT COUNT(*) FROM {table}")
             count = cur.fetchone()[0]
-            print(f"{GREEN}✅{RESET} {table}: {count} records")
+            print(f"{GREEN}{RESET} {table}: {count} records")
         
         cur.close()
         conn.close()
         return True
     except Exception as e:
-        print(f"{RED}❌ Database check failed: {e}{RESET}")
+        print(f"{RED}Database check failed: {e}{RESET}")
         return False
 
 
@@ -67,9 +67,9 @@ def check_agent_files():
     for file_path, agent_name in agent_files:
         if os.path.exists(file_path):
             size = os.path.getsize(file_path)
-            print(f"{GREEN}✅{RESET} {agent_name}: {file_path} ({size} bytes)")
+            print(f"{GREEN}{RESET} {agent_name}: {file_path} ({size} bytes)")
         else:
-            print(f"{RED}❌{RESET} {agent_name}: {file_path} NOT FOUND")
+            print(f"{RED}{RESET} {agent_name}: {file_path} NOT FOUND")
             all_exist = False
     
     return all_exist
@@ -91,9 +91,9 @@ def check_frontend_components():
         existing_path = next((p for p in candidate_paths if os.path.exists(p)), None)
         if existing_path:
             size = os.path.getsize(existing_path)
-            print(f"{GREEN}✅{RESET} {component_name}: {existing_path} ({size} bytes)")
+            print(f"{GREEN}{RESET} {component_name}: {existing_path} ({size} bytes)")
         else:
-            print(f"{RED}❌{RESET} {component_name}: NOT FOUND in {candidate_paths}")
+            print(f"{RED}{RESET} {component_name}: NOT FOUND in {candidate_paths}")
             all_exist = False
     
     return all_exist
@@ -119,14 +119,14 @@ def check_api_endpoints():
                 response = requests.get(f"{base_url}{endpoint}", timeout=5)
             
             if response.status_code == 200:
-                print(f"{GREEN}✅{RESET} {description}: {endpoint} ({response.status_code})")
+                print(f"{GREEN}{RESET} {description}: {endpoint} ({response.status_code})")
             else:
-                print(f"{YELLOW}⚠️{RESET} {description}: {endpoint} ({response.status_code})")
+                print(f"{YELLOW}️{RESET} {description}: {endpoint} ({response.status_code})")
         except requests.exceptions.ConnectionError:
-            print(f"{RED}❌{RESET} {description}: {endpoint} (Backend not running)")
+            print(f"{RED}{RESET} {description}: {endpoint} (Backend not running)")
             all_working = False
         except Exception as e:
-            print(f"{RED}❌{RESET} {description}: {endpoint} ({str(e)})")
+            print(f"{RED}{RESET} {description}: {endpoint} ({str(e)})")
             all_working = False
     
     return all_working
@@ -153,12 +153,12 @@ def check_agent_methods():
             
             for method in methods:
                 if method in content:
-                    print(f"  {GREEN}✅{RESET} {method}")
+                    print(f"  {GREEN}{RESET} {method}")
                 else:
-                    print(f"  {RED}❌{RESET} {method} NOT FOUND")
+                    print(f"  {RED}{RESET} {method} NOT FOUND")
                     all_methods_found = False
         else:
-            print(f"{RED}❌{RESET} {file_path} not found")
+            print(f"{RED}{RESET} {file_path} not found")
             all_methods_found = False
     
     return all_methods_found
@@ -182,16 +182,16 @@ def generate_summary_report():
     
     all_passed = True
     for category, passed in results.items():
-        status = f"{GREEN}✅ PASS{RESET}" if passed else f"{RED}❌ FAIL{RESET}"
+        status = f"{GREEN}PASS{RESET}" if passed else f"{RED}FAIL{RESET}"
         print(f"{category:.<50} {status}")
         if not passed:
             all_passed = False
     
     print("\n" + "="*70)
     if all_passed:
-        print(f"{GREEN}🎉 ALL SYSTEMS OPERATIONAL - 4 AGENTS FULLY FUNCTIONAL{RESET}")
+        print(f"{GREEN}ALL SYSTEMS OPERATIONAL - 4 AGENTS FULLY FUNCTIONAL{RESET}")
     else:
-        print(f"{YELLOW}⚠️  SOME CHECKS FAILED - REVIEW ABOVE{RESET}")
+        print(f"{YELLOW}️  SOME CHECKS FAILED - REVIEW ABOVE{RESET}")
     print("="*70 + "\n")
     
     return all_passed
@@ -202,5 +202,5 @@ if __name__ == "__main__":
         success = generate_summary_report()
         sys.exit(0 if success else 1)
     except Exception as e:
-        print(f"\n{RED}❌ Verification failed with error: {e}{RESET}\n")
+        print(f"\n{RED}Verification failed with error: {e}{RESET}\n")
         sys.exit(1)

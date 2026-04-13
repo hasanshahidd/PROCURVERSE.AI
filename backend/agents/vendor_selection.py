@@ -6,6 +6,7 @@ Sprint 2 Days 5-7: Recommends best vendors based on performance, pricing, and re
 from typing import Dict, Any, List, Optional
 import logging
 import json
+import hashlib
 from datetime import datetime
 
 from backend.agents import BaseAgent, AgentDecision
@@ -156,7 +157,7 @@ class VendorSelectionAgent(BaseAgent):
             )
         
         # Score vendors
-        logger.info(f"[VendorAgent] 🧮 Scoring {len(vendors)} vendors for {category}...")
+        logger.info(f"[VendorAgent] Scoring {len(vendors)} vendors for {category}...")
         scored_vendors = await self._score_vendors(
             vendors, 
             category, 
@@ -251,12 +252,13 @@ class VendorSelectionAgent(BaseAgent):
             # Default behavior is recommendation-only so orchestrator/user confirmation can gate progression.
             if primary_vendor and budget > 0 and observations.get("allow_auto_po_creation", False):
                 try:
-                    logger.info(f"[VendorAgent] 🏗️ Creating PO in Odoo for {primary_vendor.get('vendor_name')}...")
+                    logger.info(f"[VendorAgent] ️ Creating PO in Odoo for {primary_vendor.get('vendor_name')}...")
                     
                     # Get a product to use in PO (in production, this would come from PR)
                     product_tool = next((t for t in self.tools if t.name == "get_products"), None)
                     if product_tool:
-                        products_result = json.loads(product_tool.func(limit=5))
+                        import asyncio as _aio
+                        products_result = json.loads(await _aio.to_thread(product_tool.func, limit=5))
                         products = products_result.get("products", [])
                         
                         if products:
@@ -294,7 +296,8 @@ Alternative Vendors:
                                     'price': product_price
                                 }])
                                 
-                                po_result_str = po_tool.func(
+                                po_result_str = await _aio.to_thread(
+                                    po_tool.func,
                                     partner_id=primary_vendor.get("vendor_id"),
                                     order_lines=order_lines,
                                     vendor_selection_notes=vendor_notes,
@@ -303,15 +306,15 @@ Alternative Vendors:
                                 po_result = json.loads(po_result_str)
                                 
                                 if po_result.get("success"):
-                                    logger.info(f"[VendorAgent] ✅ PO {po_result.get('po_id')} created in Odoo!")
+                                    logger.info(f"[VendorAgent] PO {po_result.get('po_id')} created in Odoo!")
                                     result["odoo_po_created"] = True
                                     result["odoo_po_id"] = po_result.get("po_id")
                                     result["message"] = f"Vendor selected and PO {po_result.get('po_id')} created in Odoo"
                                 else:
-                                    logger.warning(f"[VendorAgent] ⚠️ PO creation failed: {po_result.get('error')}")
+                                    logger.warning(f"[VendorAgent] ️ PO creation failed: {po_result.get('error')}")
                             
                 except Exception as e:
-                    logger.error(f"[VendorAgent] ❌ Error creating PO: {e}")
+                    logger.error(f"[VendorAgent] Error creating PO: {e}")
                     # Continue anyway - vendor recommendation still valid
             
             # Log to agent_actions table
@@ -353,9 +356,10 @@ Alternative Vendors:
     async def _get_vendors(self, category: Optional[str] = None) -> Dict[str, Any]:
         """Fetch vendors from Odoo, optionally filtered by category"""
         try:
+            import asyncio as _aio
             vendor_tool = next(t for t in self.tools if t.name == "get_vendors")
-            # Filter by category to get only relevant vendors
-            result_str = vendor_tool.func(category=category, limit=20)
+            # Filter by category to get only relevant vendors — run in thread to avoid blocking event loop
+            result_str = await _aio.to_thread(vendor_tool.func, category=category, limit=20)
             return json.loads(result_str)
         except Exception as e:
             logger.error(f"Failed to get vendors: {e}")
@@ -380,9 +384,19 @@ Alternative Vendors:
         """
         scored_vendors = []
         
-        for vendor in vendors:
-            vendor_id = vendor.get('id')
-            vendor_name = vendor.get('name', 'Unknown Vendor')
+        for idx, vendor in enumerate(vendors):
+            # Normalize vendor_id: adapters use 'id', 'vendor_id', or '_row_id'
+            raw_vid = vendor.get('id') or vendor.get('vendor_id') or vendor.get('_row_id') or idx + 1
+            try:
+                vendor_id = int(raw_vid)
+            except (ValueError, TypeError):
+                # String IDs: use SHA-256 for a process-stable numeric value
+                # (Python's hash() is randomized per-process via PYTHONHASHSEED)
+                _digest = hashlib.sha256(str(raw_vid).encode()).hexdigest()
+                vendor_id = int(_digest[:8], 16) % 10000 + idx + 1
+            # Store numeric id back for scoring sub-methods
+            vendor['id'] = vendor_id
+            vendor_name = vendor.get('name') or vendor.get('vendor_name') or 'Unknown Vendor'
             
             # 1. Quality Score (0-40 points)
             quality_score = self._calculate_quality_score(vendor)
@@ -430,8 +444,8 @@ Alternative Vendors:
                 "concerns": concerns
             })
         
-        # Sort by total score (descending)
-        scored_vendors.sort(key=lambda x: x['total_score'], reverse=True)
+        # Sort by total score (descending), vendor_id as stable tiebreaker
+        scored_vendors.sort(key=lambda x: (-x['total_score'], x['vendor_id']))
         
         return scored_vendors
     

@@ -19,7 +19,7 @@ def add_odoo_po_id_column():
     
     try:
         print("=" * 80)
-        print("🔧 ADDING odoo_po_id COLUMN TO pr_approval_workflows")
+        print("ADDING odoo_po_id COLUMN TO pr_approval_workflows")
         print("=" * 80)
         
         # Check if column already exists
@@ -31,18 +31,18 @@ def add_odoo_po_id_column():
         """)
         
         if cur.fetchone():
-            print("ℹ️  Column odoo_po_id already exists - skipping")
+            print("️  Column odoo_po_id already exists - skipping")
             return
         
         # Add odoo_po_id column
-        print("📝 Adding odoo_po_id column (nullable integer)...")
+        print("Adding odoo_po_id column (nullable integer)...")
         cur.execute("""
             ALTER TABLE pr_approval_workflows 
             ADD COLUMN odoo_po_id INTEGER
         """)
         
         # Add index for quick lookups
-        print("🔍 Creating index on odoo_po_id...")
+        print("Creating index on odoo_po_id...")
         cur.execute("""
             CREATE INDEX idx_workflow_odoo_po 
             ON pr_approval_workflows(odoo_po_id)
@@ -50,16 +50,16 @@ def add_odoo_po_id_column():
         
         conn.commit()
         
-        print("✅ Column added successfully!")
+        print("Column added successfully!")
         print("   - odoo_po_id: INTEGER (nullable)")
         print("   - Index: idx_workflow_odoo_po")
         print("=" * 80)
-        print("✅ MIGRATION COMPLETE")
+        print("MIGRATION COMPLETE")
         print("=" * 80)
         
     except Exception as e:
         conn.rollback()
-        print(f"❌ Error: {str(e)}")
+        print(f"Error: {str(e)}")
         raise
     finally:
         cur.close()

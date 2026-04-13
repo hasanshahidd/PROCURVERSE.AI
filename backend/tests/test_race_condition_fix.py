@@ -15,9 +15,9 @@ load_dotenv()
 db_url = os.environ.get("DATABASE_URL", "NOT SET")
 print(f"DATABASE_URL: {db_url}")
 if ":5432" in db_url:
-    print("⚠️  WARNING: Using default port 5432 instead of 5433!")
+    print("️  WARNING: Using default port 5432 instead of 5433!")
 elif ":5433" in db_url:
-    print("✅ Correct port 5433 detected")
+    print("Correct port 5433 detected")
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 

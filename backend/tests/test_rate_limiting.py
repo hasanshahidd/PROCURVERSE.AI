@@ -27,9 +27,9 @@ def test_1_normal_requests_under_limit():
         result = check_rate_limit(user_id, "default")
         if result is None:  # No exception means success
             success_count += 1
-        print(f"  Request {i+1}: {'✅ Allowed' if result is None else '❌ Denied'}")
+        print(f"  Request {i+1}: {'Allowed' if result is None else 'Denied'}")
     
-    print(f"\n✅ Test 1 PASSED: {success_count}/5 requests allowed")
+    print(f"\nTest 1 PASSED: {success_count}/5 requests allowed")
     assert success_count == 5, f"Expected all 5 requests to succeed, got {success_count}"
 
 
@@ -59,7 +59,7 @@ def test_2_exceed_minute_limit():
                 assert result.retry_after <= 61, "Retry after should be <= 61 seconds for minute limit (60s + 1s safety margin)"
     
     print(f"  Allowed: {allowed_count}, Denied: {denied_count}")
-    print(f"\n✅ Test 2 PASSED: Rate limit enforced at 60 requests/minute")
+    print(f"\nTest 2 PASSED: Rate limit enforced at 60 requests/minute")
     assert allowed_count == 60, f"Expected 60 requests allowed, got {allowed_count}"
     assert denied_count == 5, f"Expected 5 requests denied, got {denied_count}"
 
@@ -114,7 +114,7 @@ def test_3_different_endpoint_types():
     print(f"  Default endpoint: {default_allowed} requests allowed (limit: 60/min)")
     assert default_allowed == 60, f"Expected 60 default requests, got {default_allowed}"
     
-    print(f"\n✅ Test 3 PASSED: Different endpoints enforce different limits")
+    print(f"\nTest 3 PASSED: Different endpoints enforce different limits")
 
 
 def test_4_user_identification():
@@ -147,7 +147,7 @@ def test_4_user_identification():
     
     print(f"  User 2: {user2_allowed} requests allowed")
     
-    print(f"\n✅ Test 4 PASSED: Users have separate rate limit buckets")
+    print(f"\nTest 4 PASSED: Users have separate rate limit buckets")
     assert user1_allowed == 60, f"User 1 should get 60 requests, got {user1_allowed}"
     assert user2_allowed == 60, f"User 2 should get 60 requests, got {user2_allowed}"
 
@@ -182,7 +182,7 @@ def test_5_stats_tracking():
     assert user_stats['current_usage']['last_minute'] == 50, \
         f"Expected 50 requests in last minute, got {user_stats['current_usage']['last_minute']}"
     
-    print(f"\n✅ Test 5 PASSED: Stats tracked correctly")
+    print(f"\nTest 5 PASSED: Stats tracked correctly")
 
 
 def test_6_stats_reset():
@@ -210,7 +210,7 @@ def test_6_stats_reset():
     assert stats_after['total_requests'] == 0, f"Expected 0 requests after reset, got {stats_after['total_requests']}"
     assert stats_after['total_users'] == 0, f"Expected 0 users after reset, got {stats_after['total_users']}"
     
-    print(f"\n✅ Test 6 PASSED: Stats reset successfully")
+    print(f"\nTest 6 PASSED: Stats reset successfully")
 
 
 def test_7_rate_limit_configuration():
@@ -246,7 +246,7 @@ def test_7_rate_limit_configuration():
     assert RATE_LIMITS['chat']['requests_per_day'] == 5000, \
         f"Expected chat 5000/day, got {RATE_LIMITS['chat']['requests_per_day']}"
     
-    print(f"\n✅ Test 7 PASSED: Rate limit configuration is correct")
+    print(f"\nTest 7 PASSED: Rate limit configuration is correct")
 
 
 def run_all_tests():
@@ -273,11 +273,11 @@ def run_all_tests():
             test_func()
             passed += 1
         except AssertionError as e:
-            print(f"\n❌ TEST FAILED: {test_func.__name__}")
+            print(f"\nTEST FAILED: {test_func.__name__}")
             print(f"   Error: {e}")
             failed += 1
         except Exception as e:
-            print(f"\n❌ TEST ERROR: {test_func.__name__}")
+            print(f"\nTEST ERROR: {test_func.__name__}")
             print(f"   Error: {e}")
             failed += 1
     
@@ -286,10 +286,10 @@ def run_all_tests():
     print("="*60)
     
     if failed == 0:
-        print("\n🎉 ALL TESTS PASSED! FIX #3 Rate Limiting is working correctly.")
+        print("\nALL TESTS PASSED! FIX #3 Rate Limiting is working correctly.")
         return True
     else:
-        print(f"\n⚠️  {failed} test(s) failed. Review the output above.")
+        print(f"\n️  {failed} test(s) failed. Review the output above.")
         return False
 
 

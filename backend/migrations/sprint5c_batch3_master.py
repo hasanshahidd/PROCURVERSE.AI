@@ -3,10 +3,13 @@ Sprint 5C Batch 3 — Cost Centers, Payment Terms, Exchange Rates, Warehouses
 6 ERPs × 4 modules = 24 tables
 """
 import os, sys
-os.chdir("E:/procure AI/Procure-AI"); sys.path.insert(0, ".")
+from pathlib import Path
+os.chdir(str(Path(__file__).resolve().parents[2])); sys.path.insert(0, ".")
 import psycopg2
 from psycopg2.extras import execute_values
-conn = psycopg2.connect("postgresql://postgres:YourStr0ng!Pass@localhost:5433/odoo_procurement_demo")
+from dotenv import load_dotenv
+load_dotenv()
+conn = psycopg2.connect(os.environ.get("DATABASE_URL", "postgresql://postgres:postgres@localhost:5433/odoo_procurement_demo"))
 cur  = conn.cursor()
 ERPS = ['odoo','sap_s4','sap_b1','dynamics','oracle','erpnext']
 
@@ -305,7 +308,7 @@ execute_values(cur, """INSERT INTO cost_centers_odoo
     (f'{dept} Department', cc, 'Procure-AI Demo', True)
     for cc, dept, code, mgr in CC
 ])
-print("  ✓ cost_centers_odoo (10)")
+print("  cost_centers_odoo (10)")
 
 execute_values(cur, """INSERT INTO cost_centers_sap_s4
     (KOSTL,KTEXT,LTEXT,VERAK,GSBER,KOSAR,DATAB,DATBI,BUKRS) VALUES %s""", [
@@ -313,28 +316,28 @@ execute_values(cur, """INSERT INTO cost_centers_sap_s4
      mgr[:12], 'BA01', 'E', '2020-01-01', '9999-12-31', '1000')
     for cc, dept, code, mgr in CC
 ])
-print("  ✓ cost_centers_sap_s4 (10)")
+print("  cost_centers_sap_s4 (10)")
 
 execute_values(cur, """INSERT INTO cost_centers_sap_b1
     (CenterCode,CenterName,InCharge) VALUES %s""", [
     (cc.replace('-',''), f'{dept[:30]}', mgr[:50])
     for cc, dept, code, mgr in CC
 ])
-print("  ✓ cost_centers_sap_b1 (10)")
+print("  cost_centers_sap_b1 (10)")
 
 execute_values(cur, """INSERT INTO cost_centers_dynamics
     (DimensionValueCode,Name,Description) VALUES %s""", [
     (cc.replace('-',''), f'{dept} Department', f'Cost center for {dept}')
     for cc, dept, code, mgr in CC
 ])
-print("  ✓ cost_centers_dynamics (10)")
+print("  cost_centers_dynamics (10)")
 
 execute_values(cur, """INSERT INTO cost_centers_oracle
     (Segment3,Description,StartDateActive) VALUES %s""", [
     (cc.replace('-',''), f'{dept} Department', '2020-01-01')
     for cc, dept, code, mgr in CC
 ])
-print("  ✓ cost_centers_oracle (10)")
+print("  cost_centers_oracle (10)")
 
 execute_values(cur, """INSERT INTO cost_centers_erpnext
     (name,cost_center_name,company,is_group,disabled) VALUES %s""", [
@@ -342,7 +345,7 @@ execute_values(cur, """INSERT INTO cost_centers_erpnext
      'Procure-AI Demo Company', 0, 0)
     for cc, dept, code, mgr in CC
 ])
-print("  ✓ cost_centers_erpnext (10)")
+print("  cost_centers_erpnext (10)")
 conn.commit()
 
 PT = [
@@ -364,21 +367,21 @@ execute_values(cur, """INSERT INTO payment_terms_odoo
     (name, f'Payment within {days} days', days, 1.0, dddays, ddpct)
     for name,code,days,ddpct,dddays,seq in PT
 ])
-print("  ✓ payment_terms_odoo (10)")
+print("  payment_terms_odoo (10)")
 
 execute_values(cur, """INSERT INTO payment_terms_sap_s4
     (ZTERM,ZTEXT,ZBT01,ZBP01,ZBD3T) VALUES %s""", [
     (code, name[:30], dddays, ddpct, days)
     for name,code,days,ddpct,dddays,seq in PT
 ])
-print("  ✓ payment_terms_sap_s4 (10)")
+print("  payment_terms_sap_s4 (10)")
 
 execute_values(cur, """INSERT INTO payment_terms_sap_b1
     (GroupNum,PayTermsGrpName,PymntAdpt,NumberOfPymnt,DiscountCode) VALUES %s""", [
     (seq, name[:30], 'B', 1, code if ddpct > 0 else None)
     for name,code,days,ddpct,dddays,seq in PT
 ])
-print("  ✓ payment_terms_sap_b1 (10)")
+print("  payment_terms_sap_b1 (10)")
 
 execute_values(cur, """INSERT INTO payment_terms_dynamics
     (TermsCode,Description,DaysInPaymentPeriod,CashDiscountPercent,CashDiscountDays)
@@ -386,14 +389,14 @@ execute_values(cur, """INSERT INTO payment_terms_dynamics
     (code, name[:50], days, ddpct, dddays)
     for name,code,days,ddpct,dddays,seq in PT
 ])
-print("  ✓ payment_terms_dynamics (10)")
+print("  payment_terms_dynamics (10)")
 
 execute_values(cur, """INSERT INTO payment_terms_oracle
     (TermsName,Description,DueDays,DiscountPercent,DiscountDays) VALUES %s""", [
     (name[:50], name[:240], days, ddpct, dddays)
     for name,code,days,ddpct,dddays,seq in PT
 ])
-print("  ✓ payment_terms_oracle (10)")
+print("  payment_terms_oracle (10)")
 
 execute_values(cur, """INSERT INTO payment_terms_erpnext
     (name,payment_terms_name,due_date_based_on,payment_days,discount_percentage)
@@ -401,7 +404,7 @@ execute_values(cur, """INSERT INTO payment_terms_erpnext
     (name[:140], name[:140], 'Day(s) after invoice date', days, ddpct)
     for name,code,days,ddpct,dddays,seq in PT
 ])
-print("  ✓ payment_terms_erpnext (10)")
+print("  payment_terms_erpnext (10)")
 conn.commit()
 
 CURRENCIES = [
@@ -419,28 +422,28 @@ execute_values(cur, """INSERT INTO exchange_rates_odoo
     (fc, 'Procure-AI Demo', dt, round(1/rate, 6))
     for fc,tc,dt,rate in CURRENCIES
 ])
-print("  ✓ exchange_rates_odoo (12)")
+print("  exchange_rates_odoo (12)")
 
 execute_values(cur, """INSERT INTO exchange_rates_sap_s4
     (KURST,FCURR,TCURR,GDATU,UKURS) VALUES %s""", [
     ('M', fc, tc, dt, rate)
     for fc,tc,dt,rate in CURRENCIES
 ])
-print("  ✓ exchange_rates_sap_s4 (12)")
+print("  exchange_rates_sap_s4 (12)")
 
 execute_values(cur, """INSERT INTO exchange_rates_sap_b1
     (Currency,RateDate,Rate,RateType) VALUES %s""", [
     (fc, dt, rate, 'LAST')
     for fc,tc,dt,rate in CURRENCIES
 ])
-print("  ✓ exchange_rates_sap_b1 (12)")
+print("  exchange_rates_sap_b1 (12)")
 
 execute_values(cur, """INSERT INTO exchange_rates_dynamics
     (CurrencyCode,ExchangeRateType,StartDate,ExchangeRate) VALUES %s""", [
     (fc, 'Default', dt, rate)
     for fc,tc,dt,rate in CURRENCIES
 ])
-print("  ✓ exchange_rates_dynamics (12)")
+print("  exchange_rates_dynamics (12)")
 
 execute_values(cur, """INSERT INTO exchange_rates_oracle
     (FromCurrency,ToCurrency,ConversionType,ConversionDate,ConversionRate)
@@ -448,14 +451,14 @@ execute_values(cur, """INSERT INTO exchange_rates_oracle
     (fc, tc, 'Corporate', dt, rate)
     for fc,tc,dt,rate in CURRENCIES
 ])
-print("  ✓ exchange_rates_oracle (12)")
+print("  exchange_rates_oracle (12)")
 
 execute_values(cur, """INSERT INTO exchange_rates_erpnext
     (name,from_currency,to_currency,exchange_rate,date) VALUES %s""", [
     (f'{fc}-{tc}-{dt}', fc, tc, rate, dt)
     for fc,tc,dt,rate in CURRENCIES
 ])
-print("  ✓ exchange_rates_erpnext (12)")
+print("  exchange_rates_erpnext (12)")
 conn.commit()
 
 WH = [
@@ -474,7 +477,7 @@ execute_values(cur, """INSERT INTO warehouses_odoo
     (f'{name} - {city}', code, 'Procure-AI Demo', True)
     for code,name,city,curr,sapcode,bukrs,lgort in WH
 ])
-print("  ✓ warehouses_odoo (7)")
+print("  warehouses_odoo (7)")
 
 execute_values(cur, """INSERT INTO warehouses_sap_s4
     (WERKS,NAME1,ORT01,LAND1,EKORG,BUKRS,LGORT,LGOBE) VALUES %s""", [
@@ -482,7 +485,7 @@ execute_values(cur, """INSERT INTO warehouses_sap_s4
      'ORG1', bukrs, lgort, f'{name[:10]} Loc')
     for code,name,city,curr,sapcode,bukrs,lgort in WH
 ])
-print("  ✓ warehouses_sap_s4 (7)")
+print("  warehouses_sap_s4 (7)")
 
 execute_values(cur, """INSERT INTO warehouses_sap_b1
     (WarehouseCode,WarehouseName,City,Country,Inactive) VALUES %s""", [
@@ -490,7 +493,7 @@ execute_values(cur, """INSERT INTO warehouses_sap_b1
      'PK' if curr=='PKR' else 'AE', 'N')
     for code,name,city,curr,sapcode,bukrs,lgort in WH
 ])
-print("  ✓ warehouses_sap_b1 (7)")
+print("  warehouses_sap_b1 (7)")
 
 execute_values(cur, """INSERT INTO warehouses_dynamics
     (WarehouseId,Name,SiteId,City,Country) VALUES %s""", [
@@ -498,7 +501,7 @@ execute_values(cur, """INSERT INTO warehouses_dynamics
      'PK' if curr=='PKR' else 'AE')
     for code,name,city,curr,sapcode,bukrs,lgort in WH
 ])
-print("  ✓ warehouses_dynamics (7)")
+print("  warehouses_dynamics (7)")
 
 execute_values(cur, """INSERT INTO warehouses_oracle
     (OrganizationCode,OrganizationName,OrganizationType,City,Country)
@@ -507,7 +510,7 @@ execute_values(cur, """INSERT INTO warehouses_oracle
      'Pakistan' if curr=='PKR' else 'UAE')
     for code,name,city,curr,sapcode,bukrs,lgort in WH
 ])
-print("  ✓ warehouses_oracle (7)")
+print("  warehouses_oracle (7)")
 
 execute_values(cur, """INSERT INTO warehouses_erpnext
     (name,warehouse_name,company,city,country,is_group,disabled)
@@ -517,7 +520,7 @@ execute_values(cur, """INSERT INTO warehouses_erpnext
      'Pakistan' if curr=='PKR' else 'UAE', 0, 0)
     for code,name,city,curr,sapcode,bukrs,lgort in WH
 ])
-print("  ✓ warehouses_erpnext (7)")
+print("  warehouses_erpnext (7)")
 conn.commit()
 
 # Update table_registry

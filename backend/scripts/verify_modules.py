@@ -15,11 +15,11 @@ def verify_modules():
     client = get_odoo_client()
     
     if not client.is_connected():
-        print("❌ Cannot connect to Odoo")
+        print("Cannot connect to Odoo")
         return
     
     print("="*70)
-    print("📋 INSTALLED PROCUREMENT MODULES")
+    print("INSTALLED PROCUREMENT MODULES")
     print("="*70 + "\n")
     
     try:
@@ -33,13 +33,13 @@ def verify_modules():
         
         print(f"Found {len(modules)} installed modules:\n")
         for m in modules:
-            print(f"✅ {m['name']}")
+            print(f"{m['name']}")
             print(f"   Description: {m['shortdesc']}")
             print(f"   Version: {m.get('installed_version', 'N/A')}\n")
         
         # Check specific modules
         print("="*70)
-        print("🎯 KEY MODULE STATUS")
+        print("KEY MODULE STATUS")
         print("="*70 + "\n")
         
         key_modules = {
@@ -59,12 +59,12 @@ def verify_modules():
             )
             
             if modules and modules[0]['state'] == 'installed':
-                print(f"✅ {description} ({module_name}): INSTALLED")
+                print(f"{description} ({module_name}): INSTALLED")
             else:
-                print(f"❌ {description} ({module_name}): NOT INSTALLED")
+                print(f"{description} ({module_name}): NOT INSTALLED")
         
     except Exception as e:
-        print(f"❌ Error: {str(e)}")
+        print(f"Error: {str(e)}")
 
 
 if __name__ == "__main__":

@@ -55,7 +55,7 @@ class CacheService:
                 # Use fakeredis for development (no Redis server needed)
                 self.client = fakeredis.FakeStrictRedis(decode_responses=True)
                 self.enabled = True
-                logger.info("✅ Cache initialized with fakeredis (development mode)")
+                logger.info("Cache initialized with fakeredis (development mode)")
             elif REDIS_AVAILABLE:
                 # Use real Redis for production
                 self.client = redis.Redis.from_url(
@@ -67,12 +67,12 @@ class CacheService:
                 # Test connection
                 self.client.ping()
                 self.enabled = True
-                logger.info(f"✅ Cache initialized with Redis: {redis_url}")
+                logger.info(f"Cache initialized with Redis: {redis_url}")
             else:
-                logger.warning("⚠️  Redis not available. Caching disabled.")
+                logger.warning("️  Redis not available. Caching disabled.")
                 self.enabled = False
         except Exception as e:
-            logger.error(f"❌ Failed to initialize cache: {e}")
+            logger.error(f"Failed to initialize cache: {e}")
             self.enabled = False
     
     def get(self, key: str) -> Optional[str]:

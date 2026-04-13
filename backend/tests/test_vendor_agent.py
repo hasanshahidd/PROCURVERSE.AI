@@ -57,7 +57,7 @@ class TestVendorAgent:
             recommendation = result.get('result', {})
             if 'primary_recommendation' in recommendation:
                 primary = recommendation['primary_recommendation']
-                print(f"\n✅ Primary Vendor: {primary.get('name')}")
+                print(f"\nPrimary Vendor: {primary.get('name')}")
                 print(f"   Score: {primary.get('total_score')}/100")
                 print(f"   Quality: {primary.get('quality_score')}/40")
                 print(f"   Price: {primary.get('price_score')}/30")
@@ -66,12 +66,12 @@ class TestVendorAgent:
                 
             assert result.get('status') == 'completed'
             assert 'primary_recommendation' in recommendation
-            print("\n✅ TEST 1 PASSED")
+            print("\nTEST 1 PASSED")
             self.passed += 1
             return True
             
         except Exception as e:
-            print(f"\n❌ TEST 1 FAILED: {e}")
+            print(f"\nTEST 1 FAILED: {e}")
             self.failed += 1
             return False
     
@@ -99,7 +99,7 @@ class TestVendorAgent:
             recommendation = result.get('result', {})
             if 'primary_recommendation' in recommendation:
                 vendor = recommendation['primary_recommendation']
-                print(f"\n✅ Recommended: {vendor.get('name')}")
+                print(f"\nRecommended: {vendor.get('name')}")
                 print(f"   Total Score: {vendor.get('total_score')}/100")
                 
                 # Check confidence is reasonable for high-budget purchase
@@ -107,12 +107,12 @@ class TestVendorAgent:
                 assert confidence >= 0.55, "Confidence too low"
                 assert confidence <= 0.95, "Confidence too high"
                 
-            print("\n✅ TEST 2 PASSED")
+            print("\nTEST 2 PASSED")
             self.passed += 1
             return True
             
         except Exception as e:
-            print(f"\n❌ TEST 2 FAILED: {e}")
+            print(f"\nTEST 2 FAILED: {e}")
             self.failed += 1
             return False
     
@@ -138,18 +138,18 @@ class TestVendorAgent:
             
             if 'primary_recommendation' in recommendation:
                 vendor = recommendation['primary_recommendation']
-                print(f"\n✅ Recommended: {vendor.get('name')}")
+                print(f"\nRecommended: {vendor.get('name')}")
                 print(f"   Delivery Score: {vendor.get('delivery_score')}/20")
                 
                 # For urgent requests, delivery should be weighted higher
                 print(f"\nVerifying delivery prioritization...")
                 
-            print("\n✅ TEST 3 PASSED")
+            print("\nTEST 3 PASSED")
             self.passed += 1
             return True
             
         except Exception as e:
-            print(f"\n❌ TEST 3 FAILED: {e}")
+            print(f"\nTEST 3 FAILED: {e}")
             self.failed += 1
             return False
     
@@ -174,7 +174,7 @@ class TestVendorAgent:
             
             if 'primary_recommendation' in recommendation:
                 vendor = recommendation['primary_recommendation']
-                print(f"\n✅ Recommended: {vendor.get('name')}")
+                print(f"\nRecommended: {vendor.get('name')}")
                 print(f"   Quality Score: {vendor.get('quality_score')}/40")
                 print(f"   Total Score: {vendor.get('total_score')}/100")
                 
@@ -182,12 +182,12 @@ class TestVendorAgent:
                 quality_score = vendor.get('quality_score', 0)
                 print(f"\nQuality score: {quality_score}/40")
                 
-            print("\n✅ TEST 4 PASSED")
+            print("\nTEST 4 PASSED")
             self.passed += 1
             return True
             
         except Exception as e:
-            print(f"\n❌ TEST 4 FAILED: {e}")
+            print(f"\nTEST 4 FAILED: {e}")
             self.failed += 1
             return False
     
@@ -223,12 +223,12 @@ class TestVendorAgent:
             for idx, alt in enumerate(alternatives, start=2):
                 print(f"{idx}. {alt.get('name')} - Score: {alt.get('total_score')}/100")
             
-            print("\n✅ TEST 5 PASSED")
+            print("\nTEST 5 PASSED")
             self.passed += 1
             return True
             
         except Exception as e:
-            print(f"\n❌ TEST 5 FAILED: {e}")
+            print(f"\nTEST 5 FAILED: {e}")
             self.failed += 1
             return False
     
@@ -258,12 +258,12 @@ class TestVendorAgent:
             
             assert 'vendor' in agent_used.lower(), f"Wrong agent selected: {agent_used}"
             
-            print("\n✅ TEST 6 PASSED")
+            print("\nTEST 6 PASSED")
             self.passed += 1
             return True
             
         except Exception as e:
-            print(f"\n❌ TEST 6 FAILED: {e}")
+            print(f"\nTEST 6 FAILED: {e}")
             self.failed += 1
             return False
     
@@ -291,13 +291,13 @@ class TestVendorAgent:
             # Confidence should be in valid range
             assert 0.55 <= confidence <= 0.95, f"Confidence out of range: {confidence}"
             
-            print(f"\n✅ Confidence is valid: {confidence:.2f}")
-            print("\n✅ TEST 7 PASSED")
+            print(f"\nConfidence is valid: {confidence:.2f}")
+            print("\nTEST 7 PASSED")
             self.passed += 1
             return True
             
         except Exception as e:
-            print(f"\n❌ TEST 7 FAILED: {e}")
+            print(f"\nTEST 7 FAILED: {e}")
             self.failed += 1
             return False
     
@@ -324,12 +324,12 @@ class TestVendorAgent:
             # Agent should handle gracefully
             assert status in ['completed', 'escalated'], f"Unexpected status: {status}"
             
-            print("\n✅ TEST 8 PASSED")
+            print("\nTEST 8 PASSED")
             self.passed += 1
             return True
             
         except Exception as e:
-            print(f"\n❌ TEST 8 FAILED: {e}")
+            print(f"\nTEST 8 FAILED: {e}")
             self.failed += 1
             return False
     
@@ -358,14 +358,14 @@ class TestVendorAgent:
         print("\n" + "=" * 70)
         print(" TEST SUMMARY")
         print("=" * 70)
-        print(f"✅ Passed: {self.passed}")
-        print(f"❌ Failed: {self.failed}")
-        print(f"📊 Total:  {self.passed + self.failed}")
+        print(f"Passed: {self.passed}")
+        print(f"Failed: {self.failed}")
+        print(f"Total:  {self.passed + self.failed}")
         
         if self.failed == 0:
-            print("\n🎉 ALL TESTS PASSED! VendorSelectionAgent is working correctly!")
+            print("\nALL TESTS PASSED! VendorSelectionAgent is working correctly!")
         else:
-            print(f"\n⚠️  {self.failed} test(s) failed. Review errors above.")
+            print(f"\n️  {self.failed} test(s) failed. Review errors above.")
         
         print("=" * 70)
         

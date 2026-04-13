@@ -254,7 +254,7 @@ class ContractMonitoringAgent(BaseAgent):
         
         # Additional spend analysis
         if spend_pct > 95:
-            reasoning += f" ⚠️ WARNING: Spend at {spend_pct:.1f}% - near contract limit!"
+            reasoning += f" ️ WARNING: Spend at {spend_pct:.1f}% - near contract limit!"
             confidence = max(confidence - 0.1, 0.5)
             if action == "monitor_ongoing":
                 action = "review_overspend_risk"

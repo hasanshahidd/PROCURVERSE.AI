@@ -20,10 +20,10 @@ def create_approval_system_tables():
     cur = conn.cursor()
     
     try:
-        print("🚀 Creating approval system tables...")
+        print("Creating approval system tables...")
         
         # 1. Pending Approvals (Low-Confidence Decisions)
-        print("📋 Creating pending_approvals table...")
+        print("Creating pending_approvals table...")
         cur.execute("""
             CREATE TABLE IF NOT EXISTS pending_approvals (
                 approval_id TEXT PRIMARY KEY,
@@ -56,7 +56,7 @@ def create_approval_system_tables():
         """)
         
         # 2. PR Approval Workflows (Multi-Level Approval Tracking)
-        print("🔀 Creating pr_approval_workflows table...")
+        print("Creating pr_approval_workflows table...")
         cur.execute("""
             CREATE TABLE IF NOT EXISTS pr_approval_workflows (
                 pr_number TEXT PRIMARY KEY,
@@ -86,7 +86,7 @@ def create_approval_system_tables():
         """)
         
         # 3. PR Approval Steps (Individual Steps in Approval Chain)
-        print("📝 Creating pr_approval_steps table...")
+        print("Creating pr_approval_steps table...")
         cur.execute("""
             CREATE TABLE IF NOT EXISTS pr_approval_steps (
                 id SERIAL PRIMARY KEY,
@@ -116,10 +116,10 @@ def create_approval_system_tables():
         """)
         
         conn.commit()
-        print("✅ Tables created successfully!")
+        print("Tables created successfully!")
         
         # Insert seed data
-        print("\n🌱 Inserting seed data...")
+        print("\nInserting seed data...")
         
         # Seed pending approvals
         print("   - Pending approvals (2 items)...")
@@ -184,24 +184,24 @@ def create_approval_system_tables():
         ))
         
         conn.commit()
-        print("✅ Seed data inserted!")
+        print("Seed data inserted!")
         
         # Print summary
-        print("\n📊 Database Summary:")
+        print("\nDatabase Summary:")
         cur.execute("SELECT COUNT(*) FROM pending_approvals WHERE status = 'pending'")
         pending_count = cur.fetchone()[0]
-        print(f"   ✅ Pending approvals: {pending_count}")
+        print(f"   Pending approvals: {pending_count}")
         
         cur.execute("SELECT COUNT(*) FROM pr_approval_workflows WHERE workflow_status = 'in_progress'")
         workflows_count = cur.fetchone()[0]
-        print(f"   ✅ Active workflows: {workflows_count}")
+        print(f"   Active workflows: {workflows_count}")
         
         cur.execute("SELECT COUNT(*) FROM pr_approval_steps WHERE status = 'pending'")
         steps_count = cur.fetchone()[0]
-        print(f"   ✅ Pending approval steps: {steps_count}")
+        print(f"   Pending approval steps: {steps_count}")
         
-        print("\n🎉 Migration Complete!")
-        print("\n📝 Next Steps:")
+        print("\nMigration Complete!")
+        print("\nNext Steps:")
         print("   1. Start backend: cd backend && uvicorn backend.main:app --reload --port 5000")
         print("   2. Start frontend: npm run dev")
         print("   3. Login and navigate to Pending Approvals page")
@@ -209,7 +209,7 @@ def create_approval_system_tables():
         
     except Exception as e:
         conn.rollback()
-        print(f"❌ Error creating tables: {e}")
+        print(f"Error creating tables: {e}")
         raise
         
     finally:

@@ -1242,7 +1242,7 @@ def run_migration(drop_first: bool = False):
 
     try:
         if drop_first:
-            print("⚠  DROP mode — removing existing NMI tables...")
+            print("DROP mode — removing existing NMI tables...")
             drop_tables = [
                 "integration_transaction_log", "data_ingestion_log",
                 "workflow_approval_matrix", "audit_trail",
@@ -1269,12 +1269,12 @@ def run_migration(drop_first: bool = False):
                 print(f"   Dropped: {t}")
             conn.commit()
 
-        print("\n🏗  Creating NMI schema tables...\n")
+        print("\nCreating NMI schema tables...\n")
         for group_name, ddl in ALL_DDL_BLOCKS:
             print(f"  ▶ {group_name}")
             cur.execute(ddl)
             conn.commit()
-            print(f"    ✓ Done")
+            print(f"    Done")
 
         # Final count
         cur.execute("""
@@ -1299,11 +1299,11 @@ def run_migration(drop_first: bool = False):
               );
         """)
         count = cur.fetchone()[0]
-        print(f"\n✅  Sprint 1 schema migration complete — {count}/46 tables created.")
+        print(f"\nSprint 1 schema migration complete — {count}/46 tables created.")
 
     except Exception as e:
         conn.rollback()
-        print(f"\n❌  Migration failed: {e}")
+        print(f"\nMigration failed: {e}")
         raise
     finally:
         cur.close()
@@ -1317,7 +1317,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.drop:
-        confirm = input("⚠  This will DROP all NMI tables. Type 'yes' to confirm: ")
+        confirm = input("This will DROP all NMI tables. Type 'yes' to confirm: ")
         if confirm.strip().lower() != "yes":
             print("Aborted.")
             sys.exit(0)

@@ -43,14 +43,14 @@ async def test_invoice_matching_agent():
     
     try:
         result = await agent.execute(test_data_perfect)
-        print(f"✓ Agent: {result['agent']}")
-        print(f"✓ Action: {result.get('action', 'N/A')}")
-        print(f"✓ Status: {result.get('status', 'N/A')}")
-        print(f"✓ Message: {result.get('message', 'N/A')}")
+        print(f"Agent: {result['agent']}")
+        print(f"Action: {result.get('action', 'N/A')}")
+        print(f"Status: {result.get('status', 'N/A')}")
+        print(f"Message: {result.get('message', 'N/A')}")
         if result.get('variance_analysis'):
-            print(f"✓ Amount Variance: {result['variance_analysis'].get('amount_variance_pct', 0)}%")
+            print(f"Amount Variance: {result['variance_analysis'].get('amount_variance_pct', 0)}%")
     except Exception as e:
-        print(f"✗ Test failed: {e}")
+        print(f"Test failed: {e}")
     
     print("\n" + "-"*80 + "\n")
     
@@ -68,14 +68,14 @@ async def test_invoice_matching_agent():
     
     try:
         result = await agent.execute(test_data_variance)
-        print(f"✓ Agent: {result['agent']}")
-        print(f"✓ Action: {result.get('action', 'N/A')}")
-        print(f"✓ Status: {result.get('status', 'N/A')}")
-        print(f"✓ Message: {result.get('message', 'N/A')}")
+        print(f"Agent: {result['agent']}")
+        print(f"Action: {result.get('action', 'N/A')}")
+        print(f"Status: {result.get('status', 'N/A')}")
+        print(f"Message: {result.get('message', 'N/A')}")
         if result.get('variance_analysis'):
-            print(f"✓ Amount Variance: {result['variance_analysis'].get('amount_variance_pct', 0)}%")
+            print(f"Amount Variance: {result['variance_analysis'].get('amount_variance_pct', 0)}%")
     except Exception as e:
-        print(f"✗ Test failed: {e}")
+        print(f"Test failed: {e}")
     
     print("\n" + "-"*80 + "\n")
     
@@ -93,14 +93,14 @@ async def test_invoice_matching_agent():
     
     try:
         result = await agent.execute(test_data_large_variance)
-        print(f"✓ Agent: {result['agent']}")
-        print(f"✓ Action: {result.get('action', 'N/A')}")
-        print(f"✓ Status: {result.get('status', 'N/A')}")
-        print(f"✓ Message: {result.get('message', 'N/A')}")
+        print(f"Agent: {result['agent']}")
+        print(f"Action: {result.get('action', 'N/A')}")
+        print(f"Status: {result.get('status', 'N/A')}")
+        print(f"Message: {result.get('message', 'N/A')}")
         if result.get('variance_analysis'):
-            print(f"✓ Amount Variance: {result['variance_analysis'].get('amount_variance_pct', 0)}%")
+            print(f"Amount Variance: {result['variance_analysis'].get('amount_variance_pct', 0)}%")
     except Exception as e:
-        print(f"✗ Test failed: {e}")
+        print(f"Test failed: {e}")
 
 
 async def test_spend_analytics_agent():
@@ -118,12 +118,12 @@ async def test_spend_analytics_agent():
     
     try:
         result = await agent.execute(test_data_ytd)
-        print(f"✓ Agent: {result['agent']}")
-        print(f"✓ Action: {result.get('action', 'N/A')}")
+        print(f"Agent: {result['agent']}")
+        print(f"Action: {result.get('action', 'N/A')}")
         
         if result.get('executive_summary'):
             summary = result['executive_summary']
-            print(f"\n📊 Executive Summary:")
+            print(f"\nExecutive Summary:")
             print(f"   Total Spend: ${summary.get('total_spend', 0):,.2f}")
             print(f"   Purchase Orders: {summary.get('total_purchase_orders', 0)}")
             print(f"   Unique Vendors: {summary.get('unique_vendors', 0)}")
@@ -133,25 +133,25 @@ async def test_spend_analytics_agent():
             print(f"   Opportunities: {summary.get('opportunities_count', 0)}")
         
         if result.get('spend_by_department'):
-            print(f"\n💼 Top 3 Departments by Spend:")
+            print(f"\nTop 3 Departments by Spend:")
             for i, (dept, amount) in enumerate(list(result['spend_by_department'].items())[:3], 1):
                 print(f"   {i}. {dept}: ${amount:,.2f}")
         
         if result.get('savings_opportunities'):
-            print(f"\n💰 Top 3 Savings Opportunities:")
+            print(f"\nTop 3 Savings Opportunities:")
             for i, opp in enumerate(result['savings_opportunities'][:3], 1):
                 print(f"   {i}. {opp.get('type')}: ${opp.get('potential_savings', 0):,.2f}")
                 print(f"      {opp.get('recommendation', 'No recommendation')}")
         
         if result.get('top_recommendations'):
-            print(f"\n🎯 Top Recommendation:")
+            print(f"\nTop Recommendation:")
             top_rec = result['top_recommendations'][0] if result['top_recommendations'] else {}
             print(f"   Priority: {top_rec.get('priority', 'N/A')}")
             print(f"   Action: {top_rec.get('action', 'N/A')}")
             print(f"   Potential Savings: ${top_rec.get('potential_savings', 0):,.2f}")
             
     except Exception as e:
-        print(f"✗ Test failed: {e}")
+        print(f"Test failed: {e}")
     
     print("\n" + "-"*80 + "\n")
     
@@ -165,17 +165,17 @@ async def test_spend_analytics_agent():
     
     try:
         result = await agent.execute(test_data_dept)
-        print(f"✓ Agent: {result['agent']}")
-        print(f"✓ Action: {result.get('action', 'N/A')}")
+        print(f"Agent: {result['agent']}")
+        print(f"Action: {result.get('action', 'N/A')}")
         
         if result.get('executive_summary'):
             summary = result['executive_summary']
-            print(f"\n📊 IT Department - Last 6 Months:")
+            print(f"\nIT Department - Last 6 Months:")
             print(f"   Total Spend: ${summary.get('total_spend', 0):,.2f}")
             print(f"   Savings Identified: ${summary.get('total_savings_identified', 0):,.2f}")
             
     except Exception as e:
-        print(f"✗ Test failed: {e}")
+        print(f"Test failed: {e}")
 
 
 async def test_inventory_check_agent():
@@ -193,20 +193,20 @@ async def test_inventory_check_agent():
     
     try:
         result = await agent.execute(test_data_full)
-        print(f"✓ Agent: {result['agent']}")
-        print(f"✓ Action: {result.get('action', 'N/A')}")
-        print(f"✓ Message: {result.get('message', 'N/A')}")
+        print(f"Agent: {result['agent']}")
+        print(f"Action: {result.get('action', 'N/A')}")
+        print(f"Message: {result.get('message', 'N/A')}")
         
         if result.get('inventory_summary'):
             summary = result['inventory_summary']
-            print(f"\n📦 Inventory Summary:")
+            print(f"\nInventory Summary:")
             print(f"   Total Products Scanned: {summary.get('total_products', 0)}")
             print(f"   Low Stock Items: {summary.get('low_stock_count', 0)}")
             print(f"   Healthy Stock Items: {summary.get('healthy_stock_count', 0)}")
             print(f"   Critical Items (Urgent): {summary.get('critical_items', 0)}")
         
         if result.get('low_stock_items'):
-            print(f"\n🚨 Low Stock Items (Top 5):")
+            print(f"\nLow Stock Items (Top 5):")
             for i, item in enumerate(result['low_stock_items'][:5], 1):
                 print(f"   {i}. {item.get('product_name', 'Unknown')}")
                 print(f"      Current Stock: {item.get('current_stock', 0)} units")
@@ -216,14 +216,14 @@ async def test_inventory_check_agent():
                 print(f"      Stockout Risk: {item.get('stockout_risk', 0):.1f}%")
         
         if result.get('prs_created'):
-            print(f"\n✅ Purchase Requisitions Created:")
+            print(f"\nPurchase Requisitions Created:")
             for i, pr in enumerate(result['prs_created'][:5], 1):
                 print(f"   {i}. {pr.get('pr_number')}: {pr.get('product_name')}")
                 print(f"      Quantity: {pr.get('quantity')} | Urgency: {pr.get('urgency')}")
                 print(f"      Estimated Delivery: {pr.get('estimated_delivery')}")
         
     except Exception as e:
-        print(f"✗ Test failed: {e}")
+        print(f"Test failed: {e}")
     
     print("\n" + "-"*80 + "\n")
     
@@ -237,14 +237,14 @@ async def test_inventory_check_agent():
     
     try:
         result = await agent.execute(test_data_single)
-        print(f"✓ Agent: {result['agent']}")
-        print(f"✓ Action: {result.get('action', 'N/A')}")
-        print(f"✓ Message: {result.get('message', 'N/A')}")
+        print(f"Agent: {result['agent']}")
+        print(f"Action: {result.get('action', 'N/A')}")
+        print(f"Message: {result.get('message', 'N/A')}")
         
         if result.get('low_stock_items'):
             item = result['low_stock_items'][0] if result['low_stock_items'] else {}
             if item:
-                print(f"\n📦 Product Details:")
+                print(f"\nProduct Details:")
                 print(f"   Name: {item.get('product_name', 'Unknown')}")
                 print(f"   Code: {item.get('product_code', 'N/A')}")
                 print(f"   Current Stock: {item.get('current_stock', 0)} units")
@@ -253,7 +253,7 @@ async def test_inventory_check_agent():
                 print(f"   Lead Time: {item.get('lead_time_days', 0)} days")
         
     except Exception as e:
-        print(f"✗ Test failed: {e}")
+        print(f"Test failed: {e}")
 
 
 async def test_integration():
@@ -274,7 +274,7 @@ async def test_integration():
             "auto_create_pr": True
         })
         
-        print(f"\n✓ Step 1 Complete: Identified {inventory_result.get('inventory_summary', {}).get('low_stock_count', 0)} low-stock items")
+        print(f"\nStep 1 Complete: Identified {inventory_result.get('inventory_summary', {}).get('low_stock_count', 0)} low-stock items")
         print(f"  Created {len(inventory_result.get('prs_created', []))} purchase requisitions")
         
         # Step 2: Spend analysis
@@ -286,7 +286,7 @@ async def test_integration():
         
         total_spend = spend_result.get('executive_summary', {}).get('total_spend', 0)
         savings = spend_result.get('executive_summary', {}).get('total_savings_identified', 0)
-        print(f"\n✓ Step 2 Complete: Analyzed ${total_spend:,.2f} spending")
+        print(f"\nStep 2 Complete: Analyzed ${total_spend:,.2f} spending")
         print(f"  Identified ${savings:,.2f} in potential savings")
         
         # Step 3: Invoice matching (simulated)
@@ -298,15 +298,15 @@ async def test_integration():
             "po_reference": "PO-2026-045"
         })
         
-        print(f"\n✓ Step 3 Complete: Invoice matching status: {invoice_result.get('status', 'N/A')}")
+        print(f"\nStep 3 Complete: Invoice matching status: {invoice_result.get('status', 'N/A')}")
         print(f"  Variance: {invoice_result.get('variance_analysis', {}).get('amount_variance_pct', 0)}%")
         
         print(f"\n{'='*80}")
-        print("✅ INTEGRATION TEST PASSED - All 3 agents executed successfully")
+        print("INTEGRATION TEST PASSED - All 3 agents executed successfully")
         print(f"{'='*80}\n")
         
     except Exception as e:
-        print(f"\n✗ Integration test failed: {e}")
+        print(f"\nIntegration test failed: {e}")
 
 
 async def main():

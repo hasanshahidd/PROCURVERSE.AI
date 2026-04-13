@@ -180,9 +180,10 @@ class ComplianceCheckAgent(BaseAgent):
         
         # Get approval chain requirements
         try:
+            import asyncio as _aio
             approval_tool = next((t for t in self.tools if t.name == "get_approval_chain"), None)
             if approval_tool:
-                approval_result = approval_tool.func(department=department, budget=amount)
+                approval_result = await _aio.to_thread(approval_tool.func, department=department, budget=amount)
                 approval_data = json.loads(approval_result)
                 # Support both tool response shapes:
                 # 1) { success: true, approver: {...} }
@@ -202,9 +203,10 @@ class ComplianceCheckAgent(BaseAgent):
             # Get budget availability
             budget_tool = next((t for t in self.tools if t.name == "check_budget_availability"), None)
             if budget_tool:
-                budget_result = budget_tool.func(
-                    department=department, 
-                    budget_category=budget_category, 
+                budget_result = await _aio.to_thread(
+                    budget_tool.func,
+                    department=department,
+                    budget_category=budget_category,
                     amount=amount
                 )
                 budget_status = json.loads(budget_result)
@@ -342,15 +344,15 @@ class ComplianceCheckAgent(BaseAgent):
         ]
         
         if violations:
-            reasoning_parts.append(f"❌ {len(violations)} violation(s) found")
+            reasoning_parts.append(f"{len(violations)} violation(s) found")
             reasoning_parts.extend([f"  - {v}" for v in violations])
         
         if warnings:
-            reasoning_parts.append(f"⚠️ {len(warnings)} warning(s)")
+            reasoning_parts.append(f"️ {len(warnings)} warning(s)")
             reasoning_parts.extend([f"  - {w}" for w in warnings])
         
         if not violations and not warnings:
-            reasoning_parts.append("✅ All compliance checks passed")
+            reasoning_parts.append("All compliance checks passed")
         
         reasoning = "\n".join(reasoning_parts)
         
@@ -414,22 +416,22 @@ class ComplianceCheckAgent(BaseAgent):
         
         if action == "approve":
             result["message"] = (
-                f"✅ Compliance check passed (Score: {context['compliance_score']}/100). "
+                f"Compliance check passed (Score: {context['compliance_score']}/100). "
                 f"All policy requirements met."
             )
         elif action == "approve_with_warnings":
             result["message"] = (
-                f"⚠️ Approved with {len(context['warnings'])} warning(s) "
+                f"️ Approved with {len(context['warnings'])} warning(s) "
                 f"(Score: {context['compliance_score']}/100). Review warnings before proceeding."
             )
         elif action == "require_correction":
             result["message"] = (
-                f"❌ Cannot proceed - {len(context['violations'])} violation(s) found "
+                f"Cannot proceed - {len(context['violations'])} violation(s) found "
                 f"(Score: {context['compliance_score']}/100). Corrections required."
             )
         elif action == "reject":
             result["message"] = (
-                f"🚫 BLOCKED - Critical compliance violations "
+                f"BLOCKED - Critical compliance violations "
                 f"(Score: {context['compliance_score']}/100). Request cannot be approved."
             )
         

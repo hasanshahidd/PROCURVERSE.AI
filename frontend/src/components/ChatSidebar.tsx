@@ -46,20 +46,13 @@ export function ChatSidebar({
 
   if (collapsed) {
     return (
-      <div 
-        className="w-12 border-r flex flex-col items-center py-4 gap-3"
-        style={{ 
-          backgroundColor: '#f8fafc', 
-          borderColor: '#e2e8f0',
-          color: '#1e293b'
-        }}
-      >
+      <div className="w-12 border-r border-slate-200 flex flex-col items-center py-4 gap-3 bg-slate-50">
         <Button
           variant="ghost"
           size="icon"
           onClick={() => setCollapsed(false)}
           title="Expand sidebar"
-          className="text-slate-700 hover:bg-slate-200"
+          className="text-slate-500 hover:text-blue-600 hover:bg-blue-50"
         >
           <ChevronRight className="h-5 w-5" />
         </Button>
@@ -68,7 +61,7 @@ export function ChatSidebar({
           size="icon"
           onClick={onNewChat}
           title="New chat"
-          className="text-slate-700 hover:bg-slate-200"
+          className="text-slate-500 hover:text-blue-600 hover:bg-blue-50"
         >
           <Plus className="h-5 w-5" />
         </Button>
@@ -77,24 +70,17 @@ export function ChatSidebar({
   }
 
   return (
-    <div 
-      className="relative border-r flex flex-col shadow-sm w-[270px] flex-shrink-0"
-      style={{ 
-        backgroundColor: '#f8fafc', 
-        borderColor: '#e2e8f0',
-        color: '#1e293b'
-      }}
-    >
-      <div className="p-2.5 border-b flex items-center justify-between gap-2" style={{ borderColor: '#e2e8f0' }}>
-        <h2 className="font-semibold text-sm flex items-center gap-2" style={{ color: '#1e293b' }}>
-          <MessageSquare className="h-4 w-4" />
+    <div className="relative border-r border-slate-200 flex flex-col w-[270px] flex-shrink-0 bg-slate-50">
+      <div className="p-2.5 border-b border-slate-200 flex items-center justify-between gap-2">
+        <h2 className="font-semibold text-sm flex items-center gap-2 text-slate-700">
+          <MessageSquare className="h-4 w-4 text-blue-500" />
           Chat History
         </h2>
         <div className="flex gap-1">
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 text-slate-700 hover:bg-slate-200"
+            className="h-8 w-8 text-slate-500 hover:text-blue-600 hover:bg-blue-50"
             onClick={onNewChat}
             title="New chat"
           >
@@ -103,7 +89,7 @@ export function ChatSidebar({
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 text-slate-700 hover:bg-slate-200"
+            className="h-8 w-8 text-slate-500 hover:text-blue-600 hover:bg-blue-50"
             onClick={() => setCollapsed(true)}
             title="Collapse sidebar"
           >
@@ -113,41 +99,42 @@ export function ChatSidebar({
       </div>
 
       <ScrollArea className="flex-1">
-        <div className="p-1 space-y-0">
+        <div className="p-1.5 space-y-0.5">
           {sessions.length === 0 ? (
-            <div className="text-center py-8 text-slate-500 text-sm">
-              <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-50" />
+            <div className="text-center py-8 text-slate-400 text-sm">
+              <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-40" />
               <p>No chat history yet</p>
-              <p className="text-xs mt-1">Start a new conversation</p>
+              <p className="text-xs mt-1 text-slate-400">Start a new conversation</p>
             </div>
           ) : (
-            sessions.map((session, index) => {
+            sessions.map((session) => {
               const isActive = activeSessionId === session.id;
               const previewTitle = getSidebarPreviewTitle(session.title);
               return (
               <div key={session.id}>
                 <div
                   className={cn(
-                    "group relative rounded-lg transition-all flex items-center gap-1 px-2 py-1",
-                    isActive 
-                      ? "bg-blue-100 shadow-sm" 
-                      : "hover:bg-slate-200"
+                    "group relative rounded-lg transition-all flex items-center gap-1 px-2.5 py-2",
+                    isActive
+                      ? "bg-blue-50 border border-blue-200 shadow-sm"
+                      : "border border-transparent hover:bg-white hover:shadow-sm"
                   )}
-                  style={isActive ? { backgroundColor: '#dbeafe' } : {}}
                 >
-                  <div 
+                  <div
                     className="flex-1 min-w-0 cursor-pointer"
                     onClick={() => onSelectSession(session.id)}
                   >
-                    <p 
-                      className="block w-full text-sm font-medium truncate" 
+                    <p
+                      className={cn(
+                        "block w-full text-sm font-medium truncate",
+                        isActive ? "text-blue-700" : "text-slate-600"
+                      )}
                       title={session.title}
-                      style={{ color: isActive ? '#1e40af' : '#475569' }}
                     >
                       {previewTitle}
                     </p>
                   </div>
-                  
+
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
@@ -155,18 +142,18 @@ export function ChatSidebar({
                         size="icon"
                         className={cn(
                           "h-6 w-6 flex-shrink-0",
-                          isActive 
-                            ? "opacity-100 text-blue-700 hover:bg-blue-200" 
-                            : "opacity-70 hover:opacity-100 text-slate-600 hover:bg-slate-300"
+                          isActive
+                            ? "opacity-100 text-blue-500 hover:bg-blue-100"
+                            : "opacity-0 group-hover:opacity-70 text-slate-400 hover:text-slate-600 hover:bg-slate-100"
                         )}
                         onClick={(e) => e.stopPropagation()}
                       >
                         <MoreHorizontal className="h-3.5 w-3.5" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-32">
+                    <DropdownMenuContent align="end" className="w-32 bg-white border-slate-200 shadow-lg">
                       <DropdownMenuItem
-                        className="text-destructive focus:text-destructive cursor-pointer"
+                        className="text-red-500 focus:text-red-600 focus:bg-red-50 cursor-pointer"
                         onClick={(e) => {
                           e.stopPropagation();
                           onDeleteSession(session.id);
@@ -178,16 +165,12 @@ export function ChatSidebar({
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
-                {index < sessions.length - 1 && (
-                  <div className="h-px my-0.5 mx-1" style={{ backgroundColor: '#e2e8f0' }} />
-                )}
               </div>
               );
             })
           )}
         </div>
       </ScrollArea>
-      
     </div>
   );
 }

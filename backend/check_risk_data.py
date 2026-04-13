@@ -12,7 +12,7 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 conn = psycopg2.connect(DATABASE_URL)
 cur = conn.cursor(cursor_factory=RealDictCursor)
 
-print("\n📊 RISK ASSESSMENTS IN DATABASE")
+print("\nRISK ASSESSMENTS IN DATABASE")
 print("="*80)
 
 cur.execute("""
@@ -34,7 +34,7 @@ for record in records:
     print(f"  PO Blocked: {record['blocked_po_creation']}")
     print(f"  Assessed: {record['assessed_at']}")
 
-print(f"\n✅ Total: {len(records)} risk assessments found")
+print(f"\nTotal: {len(records)} risk assessments found")
 print("="*80)
 
 cur.close()

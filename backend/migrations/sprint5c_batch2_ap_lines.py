@@ -4,10 +4,13 @@ Sprint 5C Batch 2 — Approved Supplier List, Invoice Lines, GRN Lines,
 6 ERPs × 5 modules = 30 tables
 """
 import os, sys
-os.chdir("E:/procure AI/Procure-AI"); sys.path.insert(0, ".")
+from pathlib import Path
+os.chdir(str(Path(__file__).resolve().parents[2])); sys.path.insert(0, ".")
 import psycopg2
 from psycopg2.extras import execute_values
-conn = psycopg2.connect("postgresql://postgres:YourStr0ng!Pass@localhost:5433/odoo_procurement_demo")
+from dotenv import load_dotenv
+load_dotenv()
+conn = psycopg2.connect(os.environ.get("DATABASE_URL", "postgresql://postgres:postgres@localhost:5433/odoo_procurement_demo"))
 cur  = conn.cursor()
 
 ERPS = ['odoo','sap_s4','sap_b1','dynamics','oracle','erpnext']
@@ -560,7 +563,7 @@ execute_values(cur, """INSERT INTO approved_supplier_list_odoo
      'USD', 14+vi*2, vi%3+1, '2025-01-01', '2026-12-31')
     for ii, vi in asl_rows
 ])
-print("  ✓ approved_supplier_list_odoo (21)")
+print("  approved_supplier_list_odoo (21)")
 
 execute_values(cur, """INSERT INTO approved_supplier_list_sap_s4
     (INFNR,MATNR,LIFNR,EKORG,WERKS,PREIS,WAERS,MINBM,WEBAZ,DATAB,DATBI)
@@ -570,7 +573,7 @@ execute_values(cur, """INSERT INTO approved_supplier_list_sap_s4
      float((ii+1)*50), 14+vi*2, '2025-01-01', '2026-12-31')
     for ii, vi in asl_rows
 ])
-print("  ✓ approved_supplier_list_sap_s4 (21)")
+print("  approved_supplier_list_sap_s4 (21)")
 
 execute_values(cur, """INSERT INTO approved_supplier_list_sap_b1
     (ItemCode,CardCode,CardName,Priority,MinOrderQty,Price,Currency,LeadTime,ValidFrom,ValidTo)
@@ -580,7 +583,7 @@ execute_values(cur, """INSERT INTO approved_supplier_list_sap_b1
      'USD', 14+vi*2, '2025-01-01', '2026-12-31')
     for ii, vi in asl_rows
 ])
-print("  ✓ approved_supplier_list_sap_b1 (21)")
+print("  approved_supplier_list_sap_b1 (21)")
 
 execute_values(cur, """INSERT INTO approved_supplier_list_dynamics
     (ItemNumber,VendorAccountNumber,VendorName,PreferredRank,
@@ -591,7 +594,7 @@ execute_values(cur, """INSERT INTO approved_supplier_list_dynamics
      'USD', 14+vi*2, '2025-01-01', '2026-12-31')
     for ii, vi in asl_rows
 ])
-print("  ✓ approved_supplier_list_dynamics (21)")
+print("  approved_supplier_list_dynamics (21)")
 
 execute_values(cur, """INSERT INTO approved_supplier_list_oracle
     (ItemNumber,SupplierNumber,SupplierName,PreferredRank,MinOrderQuantity,
@@ -602,7 +605,7 @@ execute_values(cur, """INSERT INTO approved_supplier_list_oracle
      'USD', 14+vi*2, '2025-01-01', '2026-12-31')
     for ii, vi in asl_rows
 ])
-print("  ✓ approved_supplier_list_oracle (21)")
+print("  approved_supplier_list_oracle (21)")
 
 execute_values(cur, """INSERT INTO approved_supplier_list_erpnext
     (name,parent,supplier,supplier_name,lead_time_days,min_qty,price,currency,valid_from,valid_to)
@@ -613,7 +616,7 @@ execute_values(cur, """INSERT INTO approved_supplier_list_erpnext
      'USD', '2025-01-01', '2026-12-31')
     for ii, vi in asl_rows
 ])
-print("  ✓ approved_supplier_list_erpnext (21)")
+print("  approved_supplier_list_erpnext (21)")
 conn.commit()
 
 print("\nSeeding invoice_lines...")
@@ -640,7 +643,7 @@ execute_values(cur, """INSERT INTO invoice_lines_odoo
      round(qty*price,2), round(qty*price*0.15,2), round(qty*price*1.15,2), '400000')
     for ii, seq, item, qty, price in inv_lines
 ])
-print("  ✓ invoice_lines_odoo (20)")
+print("  invoice_lines_odoo (20)")
 
 execute_values(cur, """INSERT INTO invoice_lines_sap_s4
     (BELNR,BUZEI,GJAHR,MATNR,TXZ01,MENGE,MEINS,WRBTR,MWSKZ,EBELN,SAKTO)
@@ -650,7 +653,7 @@ execute_values(cur, """INSERT INTO invoice_lines_sap_s4
      qty, 'PCS', round(qty*price,2), 'V0', f'45000000{ii+1:02d}', '400000')
     for ii, seq, item, qty, price in inv_lines
 ])
-print("  ✓ invoice_lines_sap_s4 (20)")
+print("  invoice_lines_sap_s4 (20)")
 
 execute_values(cur, """INSERT INTO invoice_lines_sap_b1
     (DocNum,LineNum,ItemCode,Dscription,Quantity,UomCode,Price,LineTotal,TaxCode,WhsCode)
@@ -660,7 +663,7 @@ execute_values(cur, """INSERT INTO invoice_lines_sap_b1
      qty, 'PCS', price, round(qty*price,2), 'VAT', 'WH01')
     for ii, seq, item, qty, price in inv_lines
 ])
-print("  ✓ invoice_lines_sap_b1 (20)")
+print("  invoice_lines_sap_b1 (20)")
 
 execute_values(cur, """INSERT INTO invoice_lines_dynamics
     (VendorInvoiceNumber,LineNumber,ItemNumber,ProductName,
@@ -672,7 +675,7 @@ execute_values(cur, """INSERT INTO invoice_lines_dynamics
      f'PO-{str(ii+1).zfill(6)}')
     for ii, seq, item, qty, price in inv_lines
 ])
-print("  ✓ invoice_lines_dynamics (20)")
+print("  invoice_lines_dynamics (20)")
 
 execute_values(cur, """INSERT INTO invoice_lines_oracle
     (InvoiceNumber,LineNumber,ItemNumber,Description,
@@ -683,7 +686,7 @@ execute_values(cur, """INSERT INTO invoice_lines_oracle
      qty, 'EA', price, round(qty*price,2), f'US-{str(ii+1).zfill(6)}')
     for ii, seq, item, qty, price in inv_lines
 ])
-print("  ✓ invoice_lines_oracle (20)")
+print("  invoice_lines_oracle (20)")
 
 execute_values(cur, """INSERT INTO invoice_lines_erpnext
     (name,parent,idx,item_code,item_name,qty,uom,rate,amount,purchase_order)
@@ -694,7 +697,7 @@ execute_values(cur, """INSERT INTO invoice_lines_erpnext
      f'PUR-ORD-2025-{str(ii+1).zfill(5)}')
     for ii, seq, item, qty, price in inv_lines
 ])
-print("  ✓ invoice_lines_erpnext (20)")
+print("  invoice_lines_erpnext (20)")
 conn.commit()
 
 print("\nSeeding grn_lines...")
@@ -717,7 +720,7 @@ execute_values(cur, """INSERT INTO grn_lines_odoo
      qty, qty, 'PCS', 'done')
     for gi, seq, item, qty, price in grn_lines
 ])
-print("  ✓ grn_lines_odoo (16)")
+print("  grn_lines_odoo (16)")
 
 execute_values(cur, """INSERT INTO grn_lines_sap_s4
     (MBLNR,ZEILE,MJAHR,MATNR,TXZ01,MENGE,MEINS,WRBTR,EBELN,WERKS,LGORT)
@@ -728,7 +731,7 @@ execute_values(cur, """INSERT INTO grn_lines_sap_s4
      f'45000000{gi+1:02d}', '1000', '0001')
     for gi, seq, item, qty, price in grn_lines
 ])
-print("  ✓ grn_lines_sap_s4 (16)")
+print("  grn_lines_sap_s4 (16)")
 
 execute_values(cur, """INSERT INTO grn_lines_sap_b1
     (DocNum,LineNum,ItemCode,Dscription,Quantity,UomCode,
@@ -739,7 +742,7 @@ execute_values(cur, """INSERT INTO grn_lines_sap_b1
      qty, 'PCS', price, round(qty*price,2), 'WH01', 0)
     for gi, seq, item, qty, price in grn_lines
 ])
-print("  ✓ grn_lines_sap_b1 (16)")
+print("  grn_lines_sap_b1 (16)")
 
 execute_values(cur, """INSERT INTO grn_lines_dynamics
     (ProductReceiptNumber,LineNumber,ItemNumber,ProductName,
@@ -751,7 +754,7 @@ execute_values(cur, """INSERT INTO grn_lines_dynamics
      'SITE1', 'WH01', f'PO-{str(gi+1).zfill(6)}')
     for gi, seq, item, qty, price in grn_lines
 ])
-print("  ✓ grn_lines_dynamics (16)")
+print("  grn_lines_dynamics (16)")
 
 execute_values(cur, """INSERT INTO grn_lines_oracle
     (ReceiptNumber,LineNumber,ItemNumber,Description,
@@ -763,7 +766,7 @@ execute_values(cur, """INSERT INTO grn_lines_oracle
      f'US-{str(gi+1).zfill(6)}')
     for gi, seq, item, qty, price in grn_lines
 ])
-print("  ✓ grn_lines_oracle (16)")
+print("  grn_lines_oracle (16)")
 
 execute_values(cur, """INSERT INTO grn_lines_erpnext
     (name,parent,idx,item_code,item_name,qty,received_qty,
@@ -775,7 +778,7 @@ execute_values(cur, """INSERT INTO grn_lines_erpnext
      'Stores - Company', f'PUR-ORD-2025-{str(gi+1).zfill(5)}')
     for gi, seq, item, qty, price in grn_lines
 ])
-print("  ✓ grn_lines_erpnext (16)")
+print("  grn_lines_erpnext (16)")
 conn.commit()
 
 print("\nSeeding budget_vs_actuals...")
@@ -795,7 +798,7 @@ execute_values(cur, """INSERT INTO budget_vs_actuals_odoo
     (cc, gl, '2025-01-01','2025-12-31', bud, act, 'USD')
     for cc, gl, cat, bud, act in BVA
 ])
-print("  ✓ budget_vs_actuals_odoo (12)")
+print("  budget_vs_actuals_odoo (12)")
 
 execute_values(cur, """INSERT INTO budget_vs_actuals_sap_s4
     (KOKRS,KOSTL,GJAHR,PERIO,KSTAR,WRTTP_04,WRTTP_11,WAERS)
@@ -804,7 +807,7 @@ execute_values(cur, """INSERT INTO budget_vs_actuals_sap_s4
      bud/12, act/12, 'USD')
     for cc, gl, cat, bud, act in BVA
 ])
-print("  ✓ budget_vs_actuals_sap_s4 (12)")
+print("  budget_vs_actuals_sap_s4 (12)")
 
 execute_values(cur, """INSERT INTO budget_vs_actuals_sap_b1
     (OcrCode,AcctCode,FromDate,ToDate,BudgetAmount,ActualAmount,Variance,Currency)
@@ -812,7 +815,7 @@ execute_values(cur, """INSERT INTO budget_vs_actuals_sap_b1
     (cc, gl, '2025-01-01','2025-12-31', bud, act, bud-act, 'USD')
     for cc, gl, cat, bud, act in BVA
 ])
-print("  ✓ budget_vs_actuals_sap_b1 (12)")
+print("  budget_vs_actuals_sap_b1 (12)")
 
 execute_values(cur, """INSERT INTO budget_vs_actuals_dynamics
     (BudgetPlanNumber,CostCenter,MainAccount,FiscalYear,Period,
@@ -822,7 +825,7 @@ execute_values(cur, """INSERT INTO budget_vs_actuals_dynamics
      bud, act, 0, bud-act, 'USD')
     for i,(cc, gl, cat, bud, act) in enumerate(BVA)
 ])
-print("  ✓ budget_vs_actuals_dynamics (12)")
+print("  budget_vs_actuals_dynamics (12)")
 
 execute_values(cur, """INSERT INTO budget_vs_actuals_oracle
     (LedgerName,CostCenter,AccountCode,PeriodName,CurrencyCode,
@@ -832,7 +835,7 @@ execute_values(cur, """INSERT INTO budget_vs_actuals_oracle
      bud, act, 0, bud-act)
     for cc, gl, cat, bud, act in BVA
 ])
-print("  ✓ budget_vs_actuals_oracle (12)")
+print("  budget_vs_actuals_oracle (12)")
 
 execute_values(cur, """INSERT INTO budget_vs_actuals_erpnext
     (name,cost_center,account,fiscal_year,monthly_budget,actual_amount,variance,company)
@@ -841,7 +844,7 @@ execute_values(cur, """INSERT INTO budget_vs_actuals_erpnext
      '2025', bud/12, act/12, (bud-act)/12, 'Procure-AI Demo Company')
     for i,(cc, gl, cat, bud, act) in enumerate(BVA)
 ])
-print("  ✓ budget_vs_actuals_erpnext (12)")
+print("  budget_vs_actuals_erpnext (12)")
 conn.commit()
 
 print("\nSeeding vendor_performance...")
@@ -868,7 +871,7 @@ execute_values(cur, """INSERT INTO vendor_performance_odoo
      otd, qual, inv_acc, price_c, overall, rating)
     for vi,period,pos,spend,otd,qual,inv_acc,price_c,overall,rating in VP
 ])
-print("  ✓ vendor_performance_odoo (12)")
+print("  vendor_performance_odoo (12)")
 
 execute_values(cur, """INSERT INTO vendor_performance_sap_s4
     (LIFNR,GJAHR,EKORG,TOTAL_POS,TOTAL_SPEND,WAERS,
@@ -878,7 +881,7 @@ execute_values(cur, """INSERT INTO vendor_performance_sap_s4
      otd, qual, price_c, overall, rating)
     for vi,period,pos,spend,otd,qual,inv_acc,price_c,overall,rating in VP
 ])
-print("  ✓ vendor_performance_sap_s4 (12)")
+print("  vendor_performance_sap_s4 (12)")
 
 execute_values(cur, """INSERT INTO vendor_performance_sap_b1
     (CardCode,CardName,Period,TotalPOs,TotalSpend,Currency,
@@ -888,7 +891,7 @@ execute_values(cur, """INSERT INTO vendor_performance_sap_b1
      otd, qual, inv_acc, overall, rating)
     for vi,period,pos,spend,otd,qual,inv_acc,price_c,overall,rating in VP
 ])
-print("  ✓ vendor_performance_sap_b1 (12)")
+print("  vendor_performance_sap_b1 (12)")
 
 execute_values(cur, """INSERT INTO vendor_performance_dynamics
     (VendorAccountNumber,VendorName,Period,TotalPOs,TotalSpend,CurrencyCode,
@@ -898,7 +901,7 @@ execute_values(cur, """INSERT INTO vendor_performance_dynamics
      otd, qual, inv_acc, overall, rating)
     for vi,period,pos,spend,otd,qual,inv_acc,price_c,overall,rating in VP
 ])
-print("  ✓ vendor_performance_dynamics (12)")
+print("  vendor_performance_dynamics (12)")
 
 execute_values(cur, """INSERT INTO vendor_performance_oracle
     (SupplierNumber,SupplierName,Period,TotalPOs,TotalSpend,CurrencyCode,
@@ -908,7 +911,7 @@ execute_values(cur, """INSERT INTO vendor_performance_oracle
      otd, qual, inv_acc, overall, rating)
     for vi,period,pos,spend,otd,qual,inv_acc,price_c,overall,rating in VP
 ])
-print("  ✓ vendor_performance_oracle (12)")
+print("  vendor_performance_oracle (12)")
 
 execute_values(cur, """INSERT INTO vendor_performance_erpnext
     (name,supplier,supplier_name,period,total_pos,total_spend,currency,
@@ -920,7 +923,7 @@ execute_values(cur, """INSERT INTO vendor_performance_erpnext
      'Procure-AI Demo Company')
     for vi,period,pos,spend,otd,qual,inv_acc,price_c,overall,rating in VP
 ])
-print("  ✓ vendor_performance_erpnext (12)")
+print("  vendor_performance_erpnext (12)")
 conn.commit()
 
 # Update table_registry

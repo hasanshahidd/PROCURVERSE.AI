@@ -170,11 +170,11 @@ def init_database():
             )
             """)
         db_available = True
-        print("✓ Database connected and initialized successfully")
+        print("Database connected and initialized successfully")
     except Exception as e:
         db_available = False
-        print(f"⚠ Database connection failed: {e}")
-        print("⚠ Application will run without database functionality")
+        print(f"Database connection failed: {e}")
+        print("Application will run without database functionality")
 
 def get_record_count():
     if not db_available:
@@ -186,7 +186,7 @@ def get_record_count():
 
 def insert_records(records: list):
     if not db_available:
-        print("⚠ Database not available - skipping record insertion")
+        print("Database not available - skipping record insertion")
         return
     with get_cursor() as cursor:
         for record in records:

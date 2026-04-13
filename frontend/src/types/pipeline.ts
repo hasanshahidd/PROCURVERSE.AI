@@ -52,11 +52,11 @@ export interface AgentChip {
 
 export interface ToolCall {
   id: string;
-  source: "PostgreSQL" | "Odoo";
+  source: "PostgreSQL" | "Odoo" | "ERP Adapter" | "ERP";
   name: string;
   status: "pending" | "running" | "complete";
   result?: string; // e.g., "1 row returned" or "47 vendors"
-  model?: string; // For Odoo: "res.partner"
+  model?: string; // For ERP: "res.partner"
 }
 
 export interface BaseAgentPhaseCard {
@@ -141,8 +141,32 @@ export interface PipelineState {
   // Live agent phase details (survives navigation)
   agentPhaseDetails: Record<string, any>;
   currentAgentName: string;
-  pendingChatResult: { data: any; agentName: string } | null;
-  
+  pendingChatResult: { data: any; agentName: string; pipelineSteps?: any[]; pipelineDetails?: Record<string, any> } | null;
+
+  // P2P human gate state — inline decisions on pipeline page
+  humanActionRequired: null | {
+    type: string;
+    message: string;
+    options: string[];
+    pr_number?: string;
+    po_number?: string;
+    vendorOptions?: Array<{ vendor_name: string; total_score?: number; score?: number; recommendation_reason?: string; strengths?: string[]; concerns?: string[] }>;
+  };
+  workflowRunId: string | null;
+  p2pStepData: null | {
+    actionsCompleted: any[];
+    totalSteps: number;
+    currentStep: string;
+    warnings?: string[];
+    gapAlerts?: {
+      maverick_spend?: boolean;
+      duplicate_invoice?: boolean;
+      contract_variance?: boolean;
+      exception_count?: number;
+    };
+    pendingExceptions?: any[];
+  };
+
   // Actions
   startPipeline: (queryText: string, queryType: QueryType, prData?: PRData) => void;
   advanceStep: (stepId: number, detailLine?: string) => void;
@@ -161,10 +185,15 @@ export interface PipelineState {
   addToolCall: (toolCall: Omit<ToolCall, "id" | "status">) => void;
   completeToolCall: (toolId: string, result: string) => void;
   setResult: (result: AgentResult) => void;
+  completePipeline: () => void;
   highlightWeakPoint: (stepId: number) => void;
   setAnimationSpeed: (speed: AnimationSpeed) => void;
   updatePhaseDetail: (phase: string, data: any) => void;
   setCurrentAgentName: (name: string) => void;
-  setPendingChatResult: (result: { data: any; agentName: string } | null) => void;
+  setPendingChatResult: (result: { data: any; agentName: string; pipelineSteps?: any[]; pipelineDetails?: Record<string, any> } | null) => void;
+  setHumanActionRequired: (action: PipelineState["humanActionRequired"]) => void;
+  setWorkflowRunId: (id: string | null) => void;
+  setP2pStepData: (data: PipelineState["p2pStepData"]) => void;
+  clearHumanGate: () => void;
   reset: () => void;
 }

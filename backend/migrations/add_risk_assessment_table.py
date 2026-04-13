@@ -88,7 +88,7 @@ def add_risk_assessment_table():
                 CONSTRAINT check_confidence CHECK (decision_confidence BETWEEN 0 AND 1)
             );
         """)
-        print("   ✅ Table structure created")
+        print("   Table structure created")
         
         # Create indexes for fast lookups
         print("Creating indexes...")
@@ -97,43 +97,43 @@ def add_risk_assessment_table():
             CREATE INDEX IF NOT EXISTS idx_risk_assessments_po 
             ON po_risk_assessments(odoo_po_id);
         """)
-        print("   ✅ Index on odoo_po_id")
+        print("   Index on odoo_po_id")
         
         cur.execute("""
             CREATE INDEX IF NOT EXISTS idx_risk_assessments_pr 
             ON po_risk_assessments(pr_number);
         """)
-        print("   ✅ Index on pr_number")
+        print("   Index on pr_number")
         
         cur.execute("""
             CREATE INDEX IF NOT EXISTS idx_risk_assessments_level 
             ON po_risk_assessments(risk_level, assessed_at DESC);
         """)
-        print("   ✅ Index on risk_level + assessed_at")
+        print("   Index on risk_level + assessed_at")
         
         cur.execute("""
             CREATE INDEX IF NOT EXISTS idx_risk_assessments_vendor 
             ON po_risk_assessments(vendor_name, assessed_at DESC);
         """)
-        print("   ✅ Index on vendor_name")
+        print("   Index on vendor_name")
         
         cur.execute("""
             CREATE INDEX IF NOT EXISTS idx_risk_assessments_blocked 
             ON po_risk_assessments(blocked_po_creation, assessed_at DESC);
         """)
-        print("   ✅ Index on blocked_po_creation")
+        print("   Index on blocked_po_creation")
         
         conn.commit()
         
-        print("\n✅ Risk assessment table created successfully!")
-        print("\n📊 Table Details:")
+        print("\nRisk assessment table created successfully!")
+        print("\nTable Details:")
         print("   • Table: po_risk_assessments")
         print("   • Purpose: Store agent risk analysis for purchase orders")
         print("   • Link: odoo_po_id references Odoo purchase.order")
         print("   • Scores: 4 dimensions (vendor, financial, compliance, operational)")
         print("   • Levels: LOW, MEDIUM, HIGH, CRITICAL")
         print("   • Features: JSONB for flexible data, outcome tracking for learning")
-        print("\n🔗 Integration:")
+        print("\nIntegration:")
         print("   • Agents READ from Odoo (vendors, POs, budgets)")
         print("   • Agents CALCULATE risk scores")
         print("   • Agents WRITE risk data to this table")
@@ -141,7 +141,7 @@ def add_risk_assessment_table():
         
     except Exception as e:
         conn.rollback()
-        print(f"\n❌ Error creating risk assessment table: {str(e)}")
+        print(f"\nError creating risk assessment table: {str(e)}")
         raise
     
     finally:
@@ -155,7 +155,7 @@ def verify_risk_table():
     cur = conn.cursor()
     
     try:
-        print("\n🔍 Verifying risk assessment table...")
+        print("\nVerifying risk assessment table...")
         
         # Check table exists
         cur.execute("""
@@ -166,7 +166,7 @@ def verify_risk_table():
         table_exists = cur.fetchone()[0]
         
         if table_exists:
-            print("   ✓ Table exists")
+            print("   Table exists")
             
             # Check columns
             cur.execute("""
@@ -176,7 +176,7 @@ def verify_risk_table():
                 ORDER BY ordinal_position;
             """)
             columns = cur.fetchall()
-            print(f"   ✓ {len(columns)} columns defined")
+            print(f"   {len(columns)} columns defined")
             
             # Check indexes
             cur.execute("""
@@ -185,16 +185,16 @@ def verify_risk_table():
                 WHERE tablename = 'po_risk_assessments';
             """)
             indexes = cur.fetchall()
-            print(f"   ✓ {len(indexes)} indexes created")
+            print(f"   {len(indexes)} indexes created")
             
             # Check current records
             cur.execute("SELECT COUNT(*) FROM po_risk_assessments;")
             count = cur.fetchone()[0]
-            print(f"   ✓ Current records: {count}")
+            print(f"   Current records: {count}")
             
-            print("\n✅ Risk assessment table verified!")
+            print("\nRisk assessment table verified!")
         else:
-            print("   ❌ Table not found!")
+            print("   Table not found!")
             
     finally:
         cur.close()
@@ -202,13 +202,13 @@ def verify_risk_table():
 
 
 if __name__ == "__main__":
-    print("\n🚀 Starting risk assessment table migration...\n")
+    print("\nStarting risk assessment table migration...\n")
     
     add_risk_assessment_table()
     verify_risk_table()
     
     print("\n" + "="*70)
-    print("✅ Migration Complete - Ready for RiskAssessmentAgent Integration!")
+    print("Migration Complete - Ready for RiskAssessmentAgent Integration!")
     print("="*70)
     print("\nNext Steps:")
     print("  1. Create LangChain tool to write risk data")

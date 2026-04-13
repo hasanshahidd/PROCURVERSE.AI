@@ -143,15 +143,15 @@ async def _invoke_inventory_check() -> None:
     from backend.agents.inventory_check import InventoryCheckAgent
 
     agent = InventoryCheckAgent()
-    result = await agent.execute({"check_type": "full_scan", "auto_create_pr": True})
-    low_stock = (
-        result.get("result", {}).get("inventory_summary", {}).get("low_stock_count", 0)
-        if isinstance(result.get("result"), dict)
-        else 0
-    )
-    logger.info(
-        "[Scheduler] inventory_check complete — low_stock_items=%s", low_stock
-    )
+    try:
+        result = await agent.execute({"check_type": "full_scan", "auto_create_pr": True})
+        inner = result.get("result") if isinstance(result, dict) else None
+        summary = inner.get("inventory_summary", {}) if isinstance(inner, dict) else {}
+        low_stock = summary.get("low_stock_count", 0) if isinstance(summary, dict) else 0
+    except Exception as inv_err:
+        logger.warning("[Scheduler] inventory_check had an issue: %s", inv_err)
+        low_stock = 0
+    logger.info("[Scheduler] inventory_check complete — low_stock_items=%s", low_stock)
 
 
 async def _invoke_contract_expiry_check() -> None:

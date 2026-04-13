@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import {
   ArrowLeft, Package, Plus, Trash2, Loader2, CheckCircle2,
   FileText, ClipboardList, Send, ChevronRight, ChevronLeft,
-  ShieldCheck, AlertTriangle
+  ShieldCheck, AlertTriangle, Truck
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,7 +12,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, BASE_URL } from "@/lib/api";
+import { useSession } from "@/hooks/useSession";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 type LineItem = {
@@ -101,6 +102,24 @@ const ITEM_ROW_BG = {
 
 let lineItemCounter = 1;
 
+// ─── URL helpers ──────────────────────────────────────────────────────────────
+function authHeaders(): Record<string, string> {
+  const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function readSessionIdFromUrl(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  const params = new URLSearchParams(window.location.search);
+  const sid = params.get("session");
+  return sid && sid.trim() ? sid.trim() : undefined;
+}
+
+function genRequestId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
+  return `req-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function GoodsReceiptPage() {
   const [, setLocation]       = useLocation();
@@ -115,6 +134,59 @@ export default function GoodsReceiptPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [result, setResult]       = useState<GRNResult | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // HF-1: session-aware mode when arrived at via /goods-receipt?session=:id
+  const sessionId = useMemo(() => readSessionIdFromUrl(), []);
+  const { session, gate, status: sessionStatus, resume } = useSession(sessionId);
+  const inSessionMode = !!sessionId;
+  const inDeliveryTracking = inSessionMode && session?.current_phase === "delivery_tracking";
+  const grnGate = inSessionMode && gate?.gate_type === "grn" ? gate : null;
+
+  const [advanceRequestId] = useState<string>(() => genRequestId());
+  const [isAdvancing, setIsAdvancing] = useState(false);
+  const [advanceError, setAdvanceError] = useState<string | null>(null);
+
+  // When a session context is available, prefill PO/vendor from the session
+  // request_summary so the user doesn't retype what the backend already knows.
+  useEffect(() => {
+    if (!inSessionMode || !session) return;
+    const summary: any = session.request_summary || {};
+    const prData = summary.pr_data || {};
+    const refPo =
+      (gate?.gate_ref as any)?.po_number ||
+      prData.po_number ||
+      "";
+    const refVendor = prData.vendor_name || summary.vendor_name || "";
+    if (refPo) setPoNumber(refPo);
+    if (refVendor) setVendorName(refVendor);
+  }, [inSessionMode, session, gate]);
+
+  const handleAdvanceToGrn = async () => {
+    if (!sessionId) return;
+    setIsAdvancing(true);
+    setAdvanceError(null);
+    try {
+      const res = await fetch(`${BASE_URL}/api/sessions/${sessionId}/advance-to-grn`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        credentials: "include",
+        body: JSON.stringify({
+          advance_request_id: advanceRequestId,
+          po_number: poNumber || undefined,
+          vendor_name: vendorName || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(`advance-to-grn failed (${res.status}): ${txt}`);
+      }
+      // SSE (from useSession) will deliver phase_completed/phase_started/gate_opened.
+    } catch (err) {
+      setAdvanceError(String((err as Error).message || err));
+    } finally {
+      setIsAdvancing(false);
+    }
+  };
 
   // ── Item helpers ──
   const addItem    = () => setItems(prev => [...prev, { id: lineItemCounter++, item_name: "", qty: 1 }]);
@@ -174,6 +246,21 @@ export default function GoodsReceiptPage() {
       };
       setResult(mock);
     } finally {
+      // HF-1: when in session mode with an open grn gate, resolve the gate
+      // so the session advances out of grn_wait into quality_inspection.
+      if (inSessionMode && grnGate?.gate_id) {
+        try {
+          await resume(grnGate.gate_id, "confirm_grn", {
+            po_number: poNumber,
+            vendor_name: vendorName,
+            quality_check_required: qualityCheck,
+            items: items.map(({ item_name, qty }) => ({ item_name, qty })),
+          });
+        } catch (err) {
+          // Non-fatal — SSE will still reflect the session state.
+          console.warn("[GoodsReceipt] resolve grn gate failed:", err);
+        }
+      }
       setIsSubmitting(false);
       setWizardStep(4); // success screen
     }
@@ -231,6 +318,94 @@ export default function GoodsReceiptPage() {
 
       <ScrollArea className="flex-1">
         <div className="p-6 max-w-3xl mx-auto space-y-6">
+
+          {/* ── HF-1: Session-aware banner (only shown with ?session=:id) ── */}
+          {inSessionMode && (
+            <Card className="rounded-2xl border-0 shadow-sm overflow-hidden">
+              <div
+                className="px-5 py-4 border-l-4"
+                style={{
+                  background:
+                    inDeliveryTracking
+                      ? "linear-gradient(135deg, #fef3c7, #fde68a)"
+                      : grnGate
+                      ? "linear-gradient(135deg, #dbeafe, #bfdbfe)"
+                      : "linear-gradient(135deg, #f1f5f9, #e2e8f0)",
+                  borderLeftColor: inDeliveryTracking
+                    ? "#d97706"
+                    : grnGate
+                    ? "#2563eb"
+                    : "#64748b",
+                }}
+              >
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                  <div className="flex items-start gap-3 flex-1 min-w-0">
+                    <div
+                      className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                      style={{
+                        background: inDeliveryTracking
+                          ? "rgba(217,119,6,0.15)"
+                          : "rgba(37,99,235,0.15)",
+                      }}
+                    >
+                      <Truck
+                        className={`h-5 w-5 ${
+                          inDeliveryTracking ? "text-amber-700" : "text-blue-700"
+                        }`}
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-gray-900">
+                        {inDeliveryTracking
+                          ? "Awaiting physical delivery"
+                          : grnGate
+                          ? "Record goods received"
+                          : `Session ${sessionId?.slice(0, 8)} · ${sessionStatus}`}
+                      </p>
+                      <p className="text-xs text-gray-700 mt-0.5">
+                        {inDeliveryTracking
+                          ? "This session is paused at delivery_tracking. Click below only once goods have physically arrived from the vendor."
+                          : grnGate
+                          ? "The session has an open grn gate. Complete the wizard below and submit — it will advance the session to quality inspection."
+                          : `Current phase: ${session?.current_phase || "—"}.`}
+                      </p>
+                      <p className="text-[11px] text-gray-500 mt-1 font-mono">
+                        session: {sessionId?.slice(0, 8)}
+                      </p>
+                    </div>
+                  </div>
+                  {inDeliveryTracking && (
+                    <Button
+                      onClick={handleAdvanceToGrn}
+                      disabled={isAdvancing}
+                      className="gap-2 rounded-xl px-4 h-10 font-semibold"
+                      style={{
+                        background: "linear-gradient(135deg, #d97706, #b45309)",
+                      }}
+                    >
+                      {isAdvancing ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Advancing…
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 className="h-4 w-4" />
+                          Confirm goods arrived
+                        </>
+                      )}
+                    </Button>
+                  )}
+                </div>
+                {advanceError && (
+                  <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 flex items-center gap-2">
+                    <AlertTriangle className="h-3 w-3 flex-shrink-0" />
+                    {advanceError}
+                  </div>
+                )}
+              </div>
+            </Card>
+          )}
 
           {/* ── Wizard Step Indicator ─────────────────────────────────── */}
           {wizardStep <= 3 && (

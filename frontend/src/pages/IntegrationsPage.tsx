@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Bell,
   Mail,
@@ -11,6 +11,10 @@ import {
   CheckCircle,
   XCircle,
   Send,
+  Database,
+  ArrowRightLeft,
+  Info,
+  Loader2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -138,6 +142,60 @@ export default function IntegrationsPage() {
 
   const [testNotifLoading, setTestNotifLoading] = useState(false);
   const [testNotifMsg, setTestNotifMsg] = useState<{ text: string; ok: boolean } | null>(null);
+
+  // ── ERP Data Source Switcher ──
+  const [erpCurrent, setErpCurrent] = useState("");
+  const [erpLabel, setErpLabel] = useState("");
+  const [erpMode, setErpMode] = useState("");
+  const [erpGuidance, setErpGuidance] = useState("");
+  const [erpDemoSources, setErpDemoSources] = useState<any[]>([]);
+  const [erpLiveSources, setErpLiveSources] = useState<any[]>([]);
+  const [erpSelected, setErpSelected] = useState("");
+  const [erpSwitching, setErpSwitching] = useState(false);
+  const [erpMsg, setErpMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [erpHowToLive, setErpHowToLive] = useState<Record<string, string>>({});
+
+  const fetchErpConfig = useCallback(async () => {
+    try {
+      const res = await apiFetch("/api/config/data-source");
+      if (!res.ok) return;
+      const data = await res.json();
+      setErpCurrent(data.current);
+      setErpLabel(data.current_label);
+      setErpMode(data.current_mode);
+      setErpGuidance(data.guidance);
+      setErpSelected(data.current);
+      setErpDemoSources(data.demo_sources || []);
+      setErpLiveSources(data.live_sources || []);
+      setErpHowToLive(data.how_to_go_live || {});
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => { fetchErpConfig(); }, [fetchErpConfig]);
+
+  const handleErpSwitch = async () => {
+    if (!erpSelected || erpSelected === erpCurrent) return;
+    setErpSwitching(true);
+    setErpMsg(null);
+    try {
+      const res = await apiFetch("/api/config/data-source", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ data_source: erpSelected }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setErpMsg({ text: data.message, ok: true });
+        fetchErpConfig();
+      } else {
+        setErpMsg({ text: data.detail || "Switch failed", ok: false });
+      }
+    } catch (e: any) {
+      setErpMsg({ text: e.message, ok: false });
+    } finally {
+      setErpSwitching(false);
+    }
+  };
 
   const now = new Date().toLocaleTimeString();
 
@@ -306,6 +364,99 @@ export default function IntegrationsPage() {
           </p>
         </div>
       </div>
+
+      {/* ── ERP Data Source Switcher ───────────────────────────────────── */}
+      <Card className="border-2 border-blue-200">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Database className="h-5 w-5 text-blue-600" />
+              ERP Data Source
+            </CardTitle>
+            <Badge className={
+              erpMode === "demo" ? "bg-amber-100 text-amber-800" :
+              erpMode === "live" ? "bg-green-100 text-green-800" :
+              "bg-blue-100 text-blue-800"
+            }>
+              {erpLabel || erpCurrent || "Loading..."}
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Current mode guidance */}
+          {erpGuidance && (
+            <div className={`rounded-md px-4 py-3 text-sm flex items-start gap-2 ${
+              erpMode === "demo" ? "bg-amber-50 border border-amber-200 text-amber-800" :
+              erpMode === "live" ? "bg-green-50 border border-green-200 text-green-800" :
+              "bg-blue-50 border border-blue-200 text-blue-800"
+            }`}>
+              <Info className="h-4 w-4 flex-shrink-0 mt-0.5" />
+              <span>{erpGuidance}</span>
+            </div>
+          )}
+
+          {/* Switcher */}
+          <div className="flex items-center gap-3">
+            <select
+              value={erpSelected}
+              onChange={(e) => setErpSelected(e.target.value)}
+              className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm bg-white"
+            >
+              <optgroup label="Demo / Sandbox (test data in PostgreSQL)">
+                {erpDemoSources.map((s: any) => (
+                  <option key={s.key} value={s.key}>
+                    {s.label} {s.is_current ? "(current)" : ""}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Live ERP Connectors">
+                {erpLiveSources.map((s: any) => (
+                  <option key={s.key} value={s.key}>
+                    {s.label} {s.configured === false ? "(not configured)" : ""} {s.is_current ? "(current)" : ""}
+                  </option>
+                ))}
+              </optgroup>
+            </select>
+            <Button
+              onClick={handleErpSwitch}
+              disabled={erpSwitching || erpSelected === erpCurrent || !erpSelected}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              {erpSwitching ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <ArrowRightLeft className="h-4 w-4 mr-2" />
+              )}
+              {erpSwitching ? "Switching..." : "Switch"}
+            </Button>
+          </div>
+
+          {/* Switch result message */}
+          {erpMsg && (
+            <div className={`rounded-md px-4 py-3 text-sm flex items-center gap-2 ${
+              erpMsg.ok ? "bg-green-50 border border-green-200 text-green-700"
+                        : "bg-red-50 border border-red-200 text-red-700"
+            }`}>
+              {erpMsg.ok ? <CheckCircle className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+              {erpMsg.text}
+            </div>
+          )}
+
+          {/* How to go live guidance */}
+          {Object.keys(erpHowToLive).length > 0 && (
+            <details className="text-sm">
+              <summary className="cursor-pointer text-blue-600 font-medium">
+                How to connect a real ERP (production mode)
+              </summary>
+              <ol className="mt-2 space-y-1 text-muted-foreground list-decimal list-inside">
+                {Object.values(erpHowToLive).map((step, i) => (
+                  <li key={i}>{step}</li>
+                ))}
+              </ol>
+            </details>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Status messages from Slack test */}
       {slackTestMsg && (
